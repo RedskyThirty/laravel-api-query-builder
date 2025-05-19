@@ -25,7 +25,7 @@ class FieldRegistry {
 	 * @var array<string, string[]>
 	 */
 	protected array $tablesFields = [];
-
+	
 	/**
 	 * Stores the list of allowed/requested fields for a given table.
 	 * Overrides any previously set values for that table.
@@ -37,7 +37,7 @@ class FieldRegistry {
 	public function setFieldsFor(string $tableName, array $fields): void {
 		$this->tablesFields[$tableName] = $fields;
 	}
-
+	
 	/**
 	 * Returns the full map of all table field registrations.
 	 *
@@ -46,7 +46,7 @@ class FieldRegistry {
 	public function getTablesFields(): array {
 		return $this->tablesFields;
 	}
-
+	
 	/**
 	 * Retrieves the list of fields registered for a given table.
 	 *
@@ -57,10 +57,10 @@ class FieldRegistry {
 		if ($this->hasFieldsFor($tableName)) {
 			return $this->tablesFields[$tableName];
 		}
-
+		
 		return null;
 	}
-
+	
 	/**
 	 * Checks if there are registered fields for a given table.
 	 *
@@ -69,5 +69,15 @@ class FieldRegistry {
 	 */
 	public function hasFieldsFor(string $tableName): bool {
 		return array_key_exists($tableName, $this->tablesFields);
+	}
+	
+	/**
+	 * Determines whether the selection targets all fields (`*`).
+	 *
+	 * @param array|null $fields
+	 * @return bool
+	 */
+	public static function isSelectingAll(?array $fields): bool {
+		return $fields === null || (count($fields) === 1 && $fields[0] === '*');
 	}
 }
