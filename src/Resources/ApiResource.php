@@ -25,7 +25,7 @@ abstract class ApiResource extends JsonResource {
 	 * @return array List of default field names
 	 */
 	abstract protected function defaultFields(): array;
-
+	
 	/**
 	 * Defines the full set of available data exposed by the resource.
 	 * Can include attributes, computed properties, or nested resources.
@@ -33,7 +33,7 @@ abstract class ApiResource extends JsonResource {
 	 * @return array Full data payload keyed by field name
 	 */
 	abstract protected function data(): array;
-
+	
 	/**
 	 * Builds the final API response array by including only the requested fields.
 	 *
@@ -47,20 +47,20 @@ abstract class ApiResource extends JsonResource {
 	 */
 	public function toArray(Request $request): array {
 		// Get the list of fields requested for this resource's table
-
+		
 		$requestedFields = app(FieldRegistry::class)->getFieldsFor($this->resource->getTable());
-
+		
 		// Fallback to default fields if none were explicitly requested
-
-		if ($requestedFields === null) {
+		
+		if (FieldRegistry::isSelectingAll($requestedFields)) {
 			$requestedFields = $this->defaultFields();
 		}
-
+		
 		$resourceAttributes = $this->resource->getAttributes(); // Raw model attributes
 		$data = $this->data(); // Extended resource data defined by subclass
-
+		
 		// Append computed fields (like accessors) not already in attributes or base data
-
+		
 		foreach ($requestedFields as $field) {
 			if (
 				!array_key_exists($field, $data) &&
@@ -70,9 +70,9 @@ abstract class ApiResource extends JsonResource {
 				$data[$field] = $this->$field;
 			}
 		}
-
+		
 		// Return only the requested fields in the response
-
+		
 		return collect($data)
 			->filter(fn ($_, $key) => in_array($key, $requestedFields))
 			->all();
