@@ -15,7 +15,7 @@ Select only the fields and relations you want. Filter, sort, paginate — cleanl
 ## Installation
 
 ```bash
-composer require redsky-envision/laravel-api-query-builder
+composer require redsky-thirty/laravel-api-query-builder
 ```
 
 ## Usage
