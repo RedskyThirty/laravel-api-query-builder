@@ -1,0 +1,38 @@
+{
+	"name": "redsky-thirty/laravel-api-query-builder",
+	"description": "Composable query builder for Laravel APIs with dynamic field selection, filtering, sorting, and eager loading.",
+	"keywords": [
+		"redsky-thirty",
+		"redsky-envision",
+		"laravel-api-query-builder"
+	],
+	"homepage": "https://github.com/redsky-thirty/laravel-api-query-builder",
+	"type": "library",
+	"license": "MIT",
+	"authors": [
+		{
+			"name": "Manuel Piton",
+			"email": "manu@redsky.be",
+			"homepage": "https://redsky-envision.be",
+			"role": "Founder, Developer"
+		}
+	],
+	"require": {
+		"php": "^8.3",
+		"illuminate/support": "^12.0"
+	},
+	"autoload": {
+		"psr-4": {
+			"RedskyEnvision\\ApiQueryBuilder\\": "src/"
+		}
+	},
+	"extra": {
+		"laravel": {
+			"providers": [
+				"RedskyEnvision\\ApiQueryBuilder\\ApiQueryBuilderServiceProvider"
+			]
+		}
+	},
+	"minimum-stability": "dev",
+	"prefer-stable": true
+}
