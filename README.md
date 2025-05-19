@@ -64,6 +64,27 @@ $results = ApiQueryBuilder::make(User::class, $request)
 return UserResource::collection($results);
 ```
 
+## Resource example
+
+```php
+class UserResource extends ApiResource {
+	protected function defaultFields(): array {
+		return ['id', 'email', 'profile', 'created_at', 'updated_at'];
+	}
+
+	protected function data(): array {
+		return [
+			'id' => $this->id,
+			'email' => $this->email,
+			'profile' => $this->whenLoaded('profile', fn () => new ProfileResource($this->profile)),
+			'posts' => $this->whenLoaded('posts', fn () => PostResource::collection($this->posts)),
+			'created_at' => $this->created_at,
+			'updated_at' => $this->updated_at
+		];
+	}
+}
+```
+
 ## Example URLs
 
 ### 1. Select default fields with relations
