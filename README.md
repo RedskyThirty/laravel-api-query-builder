@@ -64,6 +64,41 @@ $results = ApiQueryBuilder::make(User::class, $request)
 return UserResource::collection($results);
 ```
 
+## Demo
+
+This package includes a demo Laravel application for local testing and exploration.
+
+### 🚀 Getting started
+
+To launch the demo project:
+
+```bash
+cd demo
+composer install
+php artisan migrate:fresh --seed
+php artisan serve
+```
+
+Then open your browser at [http://localhost:8000/api/users](http://localhost:8000/api/users).
+
+### 🔧 Customizing the Demo
+
+The logic used to test the API query builder is defined inside:
+
+```
+/demo/routes/api.php
+```
+
+You can modify or extend this file freely to experiment with:
+
+- Custom endpoints
+- Different models and relationships
+- Field selection, filtering, sorting, and nested relations
+
+This allows you to test the package without needing to copy files into a separate Laravel project.
+
+> Note: The `demo/` folder is for local use only and should not be required in production.
+
 ## Resource example
 
 ```php
@@ -108,11 +143,12 @@ GET /api/users?
     relations=profile
 
 GET /api/users?
-    fields[users]=id,email,posts,profile&
-    fields[posts]=title,excerpt,comments&
-    fields[comments]=message,username,created_at&
+    fields[users]=id,email,profile,addresses,posts&
     fields[profiles]=firstname,lastname&
-    relations=posts,posts.comments,profile
+    fields[addresses]=street,zip,locality,formatted_address&
+    fields[posts]=title,description,excerpt,comments&
+    fields[comments]=message,username,created_at&
+    relations=posts,posts.comments,profile,addresses
 ```
 
 ### 4. Filter with equals, OR and AND
