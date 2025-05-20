@@ -3,6 +3,8 @@
 A lightweight and composable query builder for Laravel APIs, inspired by GraphQL flexibility.  
 Select only the fields and relations you want. Filter, sort, paginate — cleanly.
 
+Current version: 1.0.3
+
 ## Features
 
 - ✅ Dynamic field selection (`fields[users]=name,email`)
@@ -64,6 +66,27 @@ $results = ApiQueryBuilder::make(User::class, $request)
 return UserResource::collection($results);
 ```
 
+## Resource example
+
+```php
+class UserResource extends ApiResource {
+	protected function defaultFields(): array {
+		return ['id', 'email', 'profile', 'created_at', 'updated_at'];
+	}
+
+	protected function data(): array {
+		return [
+			'id' => $this->id,
+			'email' => $this->email,
+			'profile' => $this->whenLoaded('profile', fn () => new ProfileResource($this->profile)),
+			'posts' => $this->whenLoaded('posts', fn () => PostResource::collection($this->posts)),
+			'created_at' => $this->created_at,
+			'updated_at' => $this->updated_at
+		];
+	}
+}
+```
+
 ## Demo
 
 This package includes a demo Laravel application for local testing and exploration.
@@ -98,27 +121,6 @@ You can modify or extend this file freely to experiment with:
 This allows you to test the package without needing to copy files into a separate Laravel project.
 
 > Note: The `demo/` folder is for local use only and should not be required in production.
-
-## Resource example
-
-```php
-class UserResource extends ApiResource {
-	protected function defaultFields(): array {
-		return ['id', 'email', 'profile', 'created_at', 'updated_at'];
-	}
-
-	protected function data(): array {
-		return [
-			'id' => $this->id,
-			'email' => $this->email,
-			'profile' => $this->whenLoaded('profile', fn () => new ProfileResource($this->profile)),
-			'posts' => $this->whenLoaded('posts', fn () => PostResource::collection($this->posts)),
-			'created_at' => $this->created_at,
-			'updated_at' => $this->updated_at
-		];
-	}
-}
-```
 
 ## Example URLs
 
