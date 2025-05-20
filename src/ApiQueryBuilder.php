@@ -352,7 +352,7 @@ class ApiQueryBuilder {
 		
 		$perPage = (int)$this->request->input('per_page', $this->defaultPerPage);
 		
-		return $this->query->paginate($perPage);
+		return $this->doPaginate($perPage);
 	}
 	
 	/**
@@ -366,7 +366,7 @@ class ApiQueryBuilder {
 		
 		$perPage = (int)$this->request->input('per_page', 0);
 		
-		return $perPage > 0 ? $this->query->paginate($perPage) : $this->query->get();
+		return $perPage > 0 ? $this->doPaginate($perPage) : $this->query->get();
 	}
 	
 	/**
@@ -954,5 +954,13 @@ class ApiQueryBuilder {
 		if (!$this->hasBeenPrepared) {
 			$this->prepare();
 		}
+	}
+	
+	/**
+	 * @param int $perPage
+	 * @return LengthAwarePaginator
+	 */
+	private function doPaginate(int $perPage): LengthAwarePaginator {
+		return $this->query->paginate($perPage)->appends($this->request->query());
 	}
 }
