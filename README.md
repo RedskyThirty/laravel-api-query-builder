@@ -3,6 +3,8 @@
 A lightweight and composable query builder for Laravel APIs, inspired by GraphQL flexibility.  
 Select only the fields and relations you want. Filter, sort, paginate — cleanly.
 
+Current version: 1.0.3
+
 ## Features
 
 - ✅ Dynamic field selection (`fields[users]=name,email`)
@@ -62,6 +64,27 @@ $results = ApiQueryBuilder::make(User::class, $request)
  */
 
 return UserResource::collection($results);
+```
+
+## Resource example
+
+```php
+class UserResource extends ApiResource {
+	protected function defaultFields(): array {
+		return ['id', 'email', 'profile', 'created_at', 'updated_at'];
+	}
+
+	protected function data(): array {
+		return [
+			'id' => $this->id,
+			'email' => $this->email,
+			'profile' => $this->whenLoaded('profile', fn () => new ProfileResource($this->profile)),
+			'posts' => $this->whenLoaded('posts', fn () => PostResource::collection($this->posts)),
+			'created_at' => $this->created_at,
+			'updated_at' => $this->updated_at
+		];
+	}
+}
 ```
 
 ## Demo
