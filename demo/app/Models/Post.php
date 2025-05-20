@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 /**
  * Class Post
@@ -43,5 +44,12 @@ class Post extends Model {
 
 	public function comments(): HasMany {
 		return $this->hasMany(Comment::class);
+	}
+
+	/**
+	 * @return string
+	 */
+	public function getExcerptAttribute(): string {
+		return $this->description !== null ? Str::limit($this->description) : '';
 	}
 }
