@@ -16,7 +16,7 @@ class Address extends Model {
 	use HasUuids, HasFactory;
 
 	/**
-	 * @var string[]
+	 * @var list<string>
 	 */
 	protected $fillable = [
 		'street',

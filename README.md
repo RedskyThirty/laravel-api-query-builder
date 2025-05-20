@@ -87,11 +87,12 @@ GET /api/users?
     relations=profile
 
 GET /api/users?
-    fields[users]=id,email,posts,profile&
-    fields[posts]=title,excerpt,comments&
-    fields[comments]=message,username,created_at&
+    fields[users]=id,email,profile,addresses,posts&
     fields[profiles]=firstname,lastname&
-    relations=posts,posts.comments,profile
+    fields[addresses]=street,zip,locality,formatted_address&
+    fields[posts]=title,description,excerpt,comments&
+    fields[comments]=message,username,created_at&
+    relations=posts,posts.comments,profile,addresses
 ```
 
 ### 4. Filter with equals, OR and AND

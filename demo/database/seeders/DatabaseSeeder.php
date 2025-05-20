@@ -16,7 +16,7 @@ class DatabaseSeeder extends Seeder {
 	 * Seed the application's database.
 	 */
 	public function run(): void {
-		User::factory(20)->create()->each(function (User $user) {
+		User::factory(34)->create()->each(function (User $user) {
 			$user->profile()->save(
 				Profile::factory()->make()
 			);
