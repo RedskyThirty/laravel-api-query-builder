@@ -31,21 +31,17 @@ use App\Http\Resources\UserResource;
  */
 
 $results = ApiQueryBuilder::make(User::class, $request)
-    ->allowedRelations(['posts', 'posts.comments', 'profile'])
+    ->allowedRelations(['profile', 'addresses', 'posts', 'posts.comments'])
     ->allowedFields([
-        'users' => ['id', 'email', 'created_at', 'posts', 'profile'],
-        'posts' => ['title', 'published_at'],
-        'comments' => ['*'],
-        'profile' => ['firstname', 'lastname']
+        'users' => ['id', 'email', 'created_at', 'profile', 'addresses', 'posts'],
+        'profiles' => ['*'],
+        'addresses' => ['*'],
+        'posts' => ['title', 'excerpt', 'created_at', 'comments'],
+        'comments' => ['username', 'message', 'created_at']
     ])
-    ->allowedFilters([
-        'email', 'created_at',
-        'posts.comments.username',
-        'profile.*'
-    ])
-    ->defaultSorts([
-        Sort::make('created_at', 'desc'),
-    ])
+    ->allowedFilters(['name', 'email', 'created_at', 'addresses.*', 'profile.firstname', 'profile.lastname', 'posts.comments.username'])
+    ->defaultSorts([Sort::make('created_at', 'desc')])
+    
     ->prepare()
     ->fetch();
 
