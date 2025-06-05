@@ -370,6 +370,47 @@ class ApiQueryBuilder {
 	}
 	
 	/**
+	 * Parses and registers fields from the request without executing any database queries.
+	 * Useful for preparing API resources or validating field input independently of query building.
+	 *
+	 * @return self
+	 */
+	public function prepareWithoutQuery(): self {
+		$model = $this->query->getModel();
+		$modelTable = $model->getTable();
+		
+		// Parse and register fields for the root model
+		
+		$this->parseFields($this->request, $modelTable);
+		
+		// Parse and register fields for allowed relations
+		
+		foreach ($this->allowedRelations as $relation) {
+			$relationSegments = explode('.', $relation);
+			$currentModel = $model;
+			
+			foreach ($relationSegments as $segment) {
+				if (!method_exists($currentModel, $segment)) {
+					break;
+				}
+				
+				$relationInstance = $currentModel->$segment();
+				
+				if (!($relationInstance instanceof Relation)) {
+					break;
+				}
+				
+				$relatedModel = $relationInstance->getRelated();
+				$currentModel = $relatedModel;
+				
+				$this->parseFields($this->request, $relatedModel->getTable());
+			}
+		}
+		
+		return $this;
+	}
+	
+	/**
 	 * Applies nested `with()` eager loading and selects fields for each related model.
 	 *
 	 *  This method recursively traverses the relation chain and ensures:
