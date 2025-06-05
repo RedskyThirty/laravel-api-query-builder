@@ -8,6 +8,8 @@ use RedskyEnvision\ApiQueryBuilder\ApiQueryBuilder;
 use RedskyEnvision\ApiQueryBuilder\Resources\NotFoundResource;
 use RedskyEnvision\ApiQueryBuilder\Sorts\Sort;
 
+// Collection
+
 Route::get('/users', function (Request $request) {
 	$results = ApiQueryBuilder::make(User::class, $request)
 		->allowedRelations(['profile', 'addresses', 'posts', 'posts.comments'])
@@ -27,6 +29,8 @@ Route::get('/users', function (Request $request) {
 	return UserResource::collection($results);
 });
 
+// Single Resource
+
 Route::get('/users/{id}', function (Request $request, string $id) {
 	$user = ApiQueryBuilder::make(User::class, $request)
 		->allowedRelations(['profile', 'addresses', 'posts', 'posts.comments'])
@@ -45,3 +49,22 @@ Route::get('/users/{id}', function (Request $request, string $id) {
 
 	return $user !== null ? new UserResource($user) : NotFoundResource::make();
 })->whereUuid('id');
+
+// Without Query
+
+Route::get('/users/random', function (Request $request) {
+	$user = User::with(['profile', 'addresses', 'posts', 'posts.comments'])->inRandomOrder()->first();
+
+	ApiQueryBuilder::make(User::class, $request)
+		->allowedRelations(['profile', 'addresses', 'posts', 'posts.comments'])
+		->allowedFields([
+			'users' => ['id', 'email', 'created_at', 'profile', 'addresses', 'posts'],
+			'profiles' => ['*'],
+			'addresses' => ['*'],
+			'posts' => ['title', 'excerpt', 'created_at', 'comments'],
+			'comments' => ['username', 'message', 'created_at']
+		])
+		->prepareWithoutQuery();
+
+	return new UserResource($user);
+});
