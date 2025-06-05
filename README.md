@@ -22,9 +22,12 @@ composer require redsky-thirty/laravel-api-query-builder
 
 ## Usage
 
+### Collection
+
 ```php
-use RedskyEnvision\ApiQueryBuilder\ApiQueryBuilder;
 use App\Http\Resources\UserResource;
+use RedskyEnvision\ApiQueryBuilder\ApiQueryBuilder;
+use RedskyEnvision\ApiQueryBuilder\Sorts\Sort;
 
 /*
  * Use auto-mode based on uri params
@@ -60,6 +63,32 @@ $results = ApiQueryBuilder::make(User::class, $request)
  */
 
 return UserResource::collection($results);
+```
+
+### Single Resource
+
+```php
+use App\Http\Resources\UserResource;
+use App\Models\User;
+use RedskyEnvision\ApiQueryBuilder\ApiQueryBuilder;
+use RedskyEnvision\ApiQueryBuilder\Resources\NotFoundResource;
+
+$user = ApiQueryBuilder::make(User::class, $request)
+    ->allowedRelations(['profile', 'addresses', 'posts', 'posts.comments'])
+    ->allowedFields([
+        'users' => ['id', 'email', 'created_at', 'profile', 'addresses', 'posts'],
+        'profiles' => ['*'],
+        'addresses' => ['*'],
+        'posts' => ['title', 'excerpt', 'created_at', 'comments'],
+        'comments' => ['username', 'message', 'created_at']
+    ])
+    ->allowedFilters(['name', 'email', 'created_at', 'addresses.*', 'profile.firstname', 'profile.lastname', 'posts.comments.username'])
+    ->prepare()
+    ->query()
+    ->where('id', $id)
+    ->first();
+
+return $user !== null ? new UserResource($user) : NotFoundResource::make();
 ```
 
 ## Resource example

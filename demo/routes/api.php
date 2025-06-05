@@ -38,7 +38,6 @@ Route::get('/users/{id}', function (Request $request, string $id) {
 			'comments' => ['username', 'message', 'created_at']
 		])
 		->allowedFilters(['name', 'email', 'addresses.*', 'created_at', 'profile.firstname', 'profile.lastname', 'posts.comments.username'])
-		->defaultSorts([Sort::make('created_at', 'desc')])
 		->prepare()
 		->query()
 		->where('id', $id)
