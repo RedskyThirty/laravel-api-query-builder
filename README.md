@@ -3,7 +3,7 @@
 A lightweight and composable query builder for Laravel APIs, inspired by GraphQL flexibility.  
 Select only the fields and relations you want. Filter, sort, paginate — cleanly.
 
-Current version: 1.0.3
+Current version: 1.0.5
 
 ## Features
 
@@ -22,12 +22,17 @@ composer require redsky-thirty/laravel-api-query-builder
 
 ## Usage
 
+### Collection Mode
+
+This mode is used to retrieve multiple results from the database. It can automatically decide between returning a full collection or a paginated response based on the presence of the `per_page` parameter.
+
 ```php
-use RedskyEnvision\ApiQueryBuilder\ApiQueryBuilder;
 use App\Http\Resources\UserResource;
+use RedskyEnvision\ApiQueryBuilder\ApiQueryBuilder;
+use RedskyEnvision\ApiQueryBuilder\Sorts\Sort;
 
 /*
- * Use auto-mode based on uri params
+ * Use auto-mode based on URI parameters
  */
 
 $results = ApiQueryBuilder::make(User::class, $request)
@@ -60,6 +65,61 @@ $results = ApiQueryBuilder::make(User::class, $request)
  */
 
 return UserResource::collection($results);
+```
+
+### Single Resource Mode
+
+This mode allows you to build the query manually and return a single model instance (e.g., `User::find(...)`). Useful for retrieving one resource with relation and field selection logic applied.
+
+```php
+use App\Http\Resources\UserResource;
+use App\Models\User;
+use RedskyEnvision\ApiQueryBuilder\ApiQueryBuilder;
+use RedskyEnvision\ApiQueryBuilder\Resources\NotFoundResource;
+
+$user = ApiQueryBuilder::make(User::class, $request)
+    ->allowedRelations(['profile', 'addresses', 'posts', 'posts.comments'])
+    ->allowedFields([
+        'users' => ['id', 'email', 'created_at', 'profile', 'addresses', 'posts'],
+        'profiles' => ['*'],
+        'addresses' => ['*'],
+        'posts' => ['title', 'excerpt', 'created_at', 'comments'],
+        'comments' => ['username', 'message', 'created_at']
+    ])
+    ->allowedFilters(['name', 'email', 'created_at', 'addresses.*', 'profile.firstname', 'profile.lastname', 'posts.comments.username'])
+    ->prepare()
+    ->query()
+    ->where('id', $id)
+    ->first();
+
+return $user !== null ? new UserResource($user) : NotFoundResource::make();
+```
+
+### Usage Without Executing a Query
+
+You can initialize field and relation selection logic without executing any database queries using the `prepareWithoutQuery()` method. This is particularly useful when preparing resource responses or resolving metadata without needing to fetch actual records.
+
+This method parses the requested fields from the URL and stores them in the internal FieldRegistry, allowing your resources to behave consistently with the API expectations — all without triggering any Eloquent or SQL operations.
+
+```php
+use App\Http\Resources\UserResource;
+use App\Models\User;
+use RedskyEnvision\ApiQueryBuilder\ApiQueryBuilder;
+
+$user = User::with(['profile', 'addresses', 'posts', 'posts.comments'])->inRandomOrder()->first();
+
+ApiQueryBuilder::make(User::class, $request)
+    ->allowedRelations(['profile', 'addresses', 'posts', 'posts.comments'])
+    ->allowedFields([
+        'users' => ['id', 'email', 'created_at', 'profile', 'addresses', 'posts'],
+        'profiles' => ['*'],
+        'addresses' => ['*'],
+        'posts' => ['title', 'excerpt', 'created_at', 'comments'],
+        'comments' => ['username', 'message', 'created_at']
+    ])
+    ->prepareWithoutQuery();
+
+return new UserResource($user);
 ```
 
 ## Resource example
@@ -229,6 +289,21 @@ GET /api/users?
     relations=profile&
     per_page=10
 ```
+
+### 9. "Single Resource Mode" and "Without Executing a Query"
+
+All URL parameters related to **field selection** demonstrated above can also be used with single-resource endpoints like `/api/users/{id}` or `/api/users/random`.
+
+This works especially well when using the `prepareWithoutQuery()` method, which allows parsing and validation of requested fields and relations **without performing any database query**. This ensures consistent response shaping even when loading a single resource outside of the query builder's automatic mode.
+
+
+All URL examples provided above are fully replicable with the **Single Resource** usage (e.g. via `/api/users/{id}`).
+This ensures a consistent API experience whether you're fetching a list of resources or a single one.
+
+In contrast, when using the `prepareWithoutQuery()` method (query-less mode), **only field selection logic** (i.e. the `fields[...]` parameters) is parsed and validated. This is useful for shaping responses or metadata without performing any database access, but it does not apply filters, sorting, or relation loading.
+
+In contrast, when using the `prepareWithoutQuery()` method (query-less mode), **only field selection logic** (i.e. the `fields[...]` parameters) is parsed and validated. This is useful for shaping responses or metadata without performing any database access — such as in the demo endpoints `/api/users/random` — but it does not apply filters, sorting, or relation loading.
+
 
 ## Requirements
 

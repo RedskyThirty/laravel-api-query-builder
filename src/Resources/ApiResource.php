@@ -22,7 +22,7 @@ abstract class ApiResource extends JsonResource {
 	 * Defines the default list of fields to return if no specific
 	 * field selection has been requested for this resource type.
 	 *
-	 * @return array List of default field names
+	 * @return list<string> List of default field names
 	 */
 	abstract protected function defaultFields(): array;
 	
