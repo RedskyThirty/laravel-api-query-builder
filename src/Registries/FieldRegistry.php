@@ -27,6 +27,19 @@ class FieldRegistry {
 	protected array $tablesFields = [];
 	
 	/**
+	 * A map of table names to the list of allowed fields for each.
+	 *
+	 * Example:
+	 *  [
+	 *      'users' => ['id', 'name', 'email'],
+	 *      'posts' => ['title', 'created_at']
+	 *  ]
+	 *
+	 * @var array<string, string[]>
+	 */
+	protected array $tablesAllowedFields = [];
+	
+	/**
 	 * Stores the list of allowed/requested fields for a given table.
 	 * Overrides any previously set values for that table.
 	 *
@@ -39,12 +52,33 @@ class FieldRegistry {
 	}
 	
 	/**
+	 * Stores the list of allowed fields for a given table.
+	 * Overrides any previously set values for that table.
+	 *
+	 * @param string $tableName
+	 * @param string[] $fields
+	 * @return void
+	 */
+	public function setAllowedFieldsFor(string $tableName, array $fields): void {
+		$this->tablesAllowedFields[$tableName] = $fields;
+	}
+	
+	/**
 	 * Returns the full map of all table field registrations.
 	 *
 	 * @return array<string, string[]>
 	 */
 	public function getTablesFields(): array {
 		return $this->tablesFields;
+	}
+	
+	/**
+	 * Returns the full map of all table allowed fields.
+	 *
+	 * @return array<string, string[]>
+	 */
+	public function getTablesAllowedFields(): array {
+		return $this->tablesAllowedFields;
 	}
 	
 	/**
@@ -56,6 +90,20 @@ class FieldRegistry {
 	public function getFieldsFor(string $tableName): ?array {
 		if ($this->hasFieldsFor($tableName)) {
 			return $this->tablesFields[$tableName];
+		}
+		
+		return null;
+	}
+	
+	/**
+	 * Retrieves the list of allowed fields for a given table.
+	 *
+	 * @param string $tableName
+	 * @return string[]|null
+	 */
+	public function getAllowedFieldsFor(string $tableName): ?array {
+		if (array_key_exists($tableName, $this->tablesAllowedFields)) {
+			return $this->tablesAllowedFields[$tableName];
 		}
 		
 		return null;

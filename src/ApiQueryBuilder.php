@@ -185,6 +185,8 @@ class ApiQueryBuilder {
 	public function allowedFields(array $fields): self {
 		$this->allowedFields = $fields;
 		
+		$this->storeAllowedFields();
+		
 		return $this;
 	}
 	
@@ -495,6 +497,29 @@ class ApiQueryBuilder {
 		$relationName = null;
 		$fullRelationKey = null;
 		$relationInstance = null;
+	}
+	
+	/**
+	 * Store allowed fields in FieldRegistry
+	 *
+	 * @return void
+	 */
+	private function storeAllowedFields(): void {
+		// Determine whether allowedFields is an associative array (per table)
+		
+		$isAssoc = Arr::isAssoc($this->allowedFields);
+		
+		// Check if wildcard is present (global)
+		
+		$isAllowingAll = !$isAssoc && count($this->allowedFields) === 1 && $this->allowedFields[0] === '*';
+		
+		if (!$isAllowingAll && $isAssoc) {
+			$fieldRegistry = app(FieldRegistry::class);
+			
+			foreach ($this->allowedFields as $table => $field) {
+				$fieldRegistry->setAllowedFieldsFor($table, $field);
+			}
+		}
 	}
 	
 	/**
