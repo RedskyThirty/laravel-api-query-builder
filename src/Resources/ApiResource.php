@@ -48,12 +48,18 @@ abstract class ApiResource extends JsonResource {
 	public function toArray(Request $request): array {
 		// Get the list of fields requested for this resource's table
 		
-		$requestedFields = app(FieldRegistry::class)->getFieldsFor($this->resource->getTable());
+		$fieldRegistry = app(FieldRegistry::class);
+		$requestedFields = $fieldRegistry->getFieldsFor($this->resource->getTable());
 		
 		// Fallback to default fields if none were explicitly requested
 		
 		if (FieldRegistry::isSelectingAll($requestedFields)) {
 			$requestedFields = $this->defaultFields();
+			$allowedFields = $fieldRegistry->getAllowedFieldsFor($this->resource->getTable());
+			
+			if (!empty($allowedFields) && !FieldRegistry::isSelectingAll($allowedFields)) {
+				$requestedFields = array_values(array_intersect($requestedFields, $allowedFields));
+			}
 		}
 		
 		$resourceAttributes = $this->resource->getAttributes(); // Raw model attributes
