@@ -91,6 +91,11 @@ class ApiQueryBuilder {
 	private array $allowedFields = ['*'];
 	
 	/**
+	 * @var array<string, string[]> List of fields that must always be selected per table
+	 */
+	private array $alwaysFields = [];
+	
+	/**
 	 * @var string[] List of allowed filter fields
 	 */
 	private array $allowedFilters = [];
@@ -187,6 +192,17 @@ class ApiQueryBuilder {
 		
 		$this->storeAllowedFields();
 		
+		return $this;
+	}
+	
+	/**
+	 * Sets always-included fields per table (e.g. for internal checks).
+	 *
+	 * @param array<string, string[]> $fields Value must be ['table' => ['field1', 'field2']]
+	 * @return $this
+	 */
+	public function alwaysFields(array $fields): self {
+		$this->alwaysFields = $fields;
 		return $this;
 	}
 	
@@ -599,9 +615,21 @@ class ApiQueryBuilder {
 			$fields = ['*'];
 		}
 		
+		$fieldRegistry = app(FieldRegistry::class);
+		
+		// Append "alwaysFields" if set and current selection is not wildcard
+		
+		if ($fields !== ['*'] && array_key_exists($tableName, $this->alwaysFields)) {
+			$fields = array_unique(array_merge($fields, $this->alwaysFields[$tableName]));
+			
+			// Store the fields in FieldRegistry
+			
+			$fieldRegistry->setAlwaysFieldsFor($tableName, $this->alwaysFields[$tableName]);
+		}
+		
 		// Store the result in FieldRegistry for use in resources (e.g., ApiResource)
 		
-		app(FieldRegistry::class)->setFieldsFor($tableName, $fields);
+		$fieldRegistry->setFieldsFor($tableName, $fields);
 		
 		return $fields;
 	}

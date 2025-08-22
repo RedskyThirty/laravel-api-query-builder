@@ -40,6 +40,19 @@ class FieldRegistry {
 	protected array $tablesAllowedFields = [];
 	
 	/**
+	 * A map of table names to the list of always-included fields for each.
+	 * These fields will be automatically added to the requested fields if missing.
+	 *
+	 *  Example:
+	 *   [
+	 *       'posts' => ['author_id']
+	 *   ]
+	 *
+	 * @var array<string, string[]>
+	 */
+	protected array $tablesAlwaysFields = [];
+	
+	/**
 	 * Stores the list of allowed/requested fields for a given table.
 	 * Overrides any previously set values for that table.
 	 *
@@ -61,6 +74,18 @@ class FieldRegistry {
 	 */
 	public function setAllowedFieldsFor(string $tableName, array $fields): void {
 		$this->tablesAllowedFields[$tableName] = $fields;
+	}
+	
+	/**
+	 * Stores the list of always-included fields for a given table.
+	 * These fields will be automatically injected into any requested fields.
+	 *
+	 * @param string $tableName
+	 * @param string[] $fields
+	 * @return void
+	 */
+	public function setAlwaysFieldsFor(string $tableName, array $fields): void {
+		$this->tablesAlwaysFields[$tableName] = $fields;
 	}
 	
 	/**
@@ -104,6 +129,20 @@ class FieldRegistry {
 	public function getAllowedFieldsFor(string $tableName): ?array {
 		if (array_key_exists($tableName, $this->tablesAllowedFields)) {
 			return $this->tablesAllowedFields[$tableName];
+		}
+		
+		return null;
+	}
+	
+	/**
+	 * Retrieves the list of fields that must always be selected for a given table.
+	 *
+	 * @param string $tableName
+	 * @return string[]|null
+	 */
+	public function getAlwaysFieldsFor(string $tableName): ?array {
+		if (array_key_exists($tableName, $this->tablesAlwaysFields)) {
+			return $this->tablesAlwaysFields[$tableName];
 		}
 		
 		return null;
