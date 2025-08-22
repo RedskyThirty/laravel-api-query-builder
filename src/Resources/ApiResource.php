@@ -49,16 +49,25 @@ abstract class ApiResource extends JsonResource {
 		// Get the list of fields requested for this resource's table
 		
 		$fieldRegistry = app(FieldRegistry::class);
-		$requestedFields = $fieldRegistry->getFieldsFor($this->resource->getTable());
+		$resourceTable = $this->resource->getTable();
+		$requestedFields = $fieldRegistry->getFieldsFor($resourceTable);
 		
 		// Fallback to default fields if none were explicitly requested
 		
 		if (FieldRegistry::isSelectingAll($requestedFields)) {
 			$requestedFields = $this->defaultFields();
-			$allowedFields = $fieldRegistry->getAllowedFieldsFor($this->resource->getTable());
+			$allowedFields = $fieldRegistry->getAllowedFieldsFor($resourceTable);
 			
 			if (!empty($allowedFields) && !FieldRegistry::isSelectingAll($allowedFields)) {
 				$requestedFields = array_values(array_intersect($requestedFields, $allowedFields));
+			}
+			
+			// Inject "alwaysFields" if defined
+			
+			$alwaysFields = $fieldRegistry->getAlwaysFieldsFor($resourceTable);
+			
+			if (!empty($alwaysFields)) {
+				$requestedFields = array_values(array_unique(array_merge($requestedFields, $alwaysFields)));
 			}
 		}
 		

@@ -3,7 +3,7 @@
 A lightweight and composable query builder for Laravel APIs, inspired by GraphQL flexibility.  
 Select only the fields and relations you want. Filter, sort, paginate — cleanly.
 
-Current version: 1.0.6
+Current version: 1.0.7
 
 ## Features
 
@@ -43,6 +43,9 @@ $results = ApiQueryBuilder::make(User::class, $request)
         'addresses' => ['*'],
         'posts' => ['title', 'excerpt', 'created_at', 'comments'],
         'comments' => ['username', 'message', 'created_at']
+    ])
+    ->alwaysFields([
+        'posts' => ['author_id']
     ])
     ->allowedFilters(['name', 'email', 'created_at', 'addresses.*', 'profile.firstname', 'profile.lastname', 'posts.comments.username'])
     ->defaultSorts([Sort::make('created_at', 'desc')])
@@ -86,6 +89,9 @@ $user = ApiQueryBuilder::make(User::class, $request)
         'posts' => ['title', 'excerpt', 'created_at', 'comments'],
         'comments' => ['username', 'message', 'created_at']
     ])
+    ->alwaysFields([
+        'posts' => ['author_id']
+    ])
     ->allowedFilters(['name', 'email', 'created_at', 'addresses.*', 'profile.firstname', 'profile.lastname', 'posts.comments.username'])
     ->prepare()
     ->query()
@@ -121,6 +127,25 @@ ApiQueryBuilder::make(User::class, $request)
 
 return new UserResource($user);
 ```
+
+## Always Fields
+
+Sometimes, certain fields are **required internally** even if the client hasn't explicitly requested them. For example, foreign keys used to link relationships.
+
+To support this, the `alwaysFields()` method allows you to define fields that should **always be included in the response**, even if they are not present in the `fields[...]` parameters or in the `defaultFields()` fallback.
+
+```php
+->alwaysFields([
+    'posts' => ['author_id']
+])
+```
+
+These fields will be automatically merged into the requested or default field set before the resource is rendered.
+
+### ⚠️ Priority Rules
+- `alwaysFields` are **not filtered** by `allowedFields`
+- They are **injected unconditionally**
+- Useful for internal fields like foreign keys or polymorphic links
 
 ## Resource example
 
