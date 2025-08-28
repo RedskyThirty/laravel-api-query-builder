@@ -584,10 +584,14 @@ class ApiQueryBuilder {
 	 * @return bool
 	 */
 	private function isAllowedSort(string $sort): bool {
-		$ok = (count($this->allowedSorts) === 1 && $this->allowedSorts[0] === '*') || in_array($sort, $this->allowedSorts, true);
+		// Remove the "-" if present to normalize the field name
+		$normalized = ltrim($sort, '-');
+		
+		// Check against allowed list (or wildcard)
+		$ok = (count($this->allowedSorts) === 1 && $this->allowedSorts[0] === '*') || in_array($normalized, $this->allowedSorts, true);
 		
 		if ($this->strictMode && !$ok) {
-			throw new InvalidSortException('Sort "'.$sort.'" is not allowed.');
+			throw new InvalidSortException('Sort "'.$normalized.'" is not allowed.');
 		}
 		
 		return $ok;
