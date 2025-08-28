@@ -147,6 +147,57 @@ These fields will be automatically merged into the requested or default field se
 - They are **injected unconditionally**
 - Useful for internal fields like foreign keys or polymorphic links
 
+## Sorting
+
+The `orderby` parameter allows you to dynamically control the sort order of your API results.
+
+### Basic Usage
+
+You can specify one or multiple fields to sort by.  
+By default, the sort order is **ascending** unless you prefix the field with a minus (`-`) for **descending** order.
+
+#### Examples
+
+```
+# Sort by email ascending
+GET /api/users?orderby=email
+
+# Sort by created date descending
+GET /api/users?orderby=-created_at
+
+# Sort by multiple fields (first by created_at descending, then by email ascending)
+GET /api/users?orderby=-created_at,email
+```
+
+### Defining Allowed Sorts
+
+To restrict which fields can be used for sorting, you can use the `allowedSorts()` method:
+
+```php
+$results = ApiQueryBuilder::make(User::class, $request)
+    ->allowedSorts(['id', 'email', 'created_at'])
+    ->prepare()
+    ->fetch();
+```
+
+If a user tries to sort by a field not in the allowed list, the query builder will ignore it (or throw an exception if **strict mode** is enabled).
+
+### Default Sorts
+
+You can define default sorts using the `defaultSorts()` method.  
+This will be applied automatically if no `orderby` parameter is provided.
+
+```php
+use RedskyEnvision\ApiQueryBuilder\Sorts\Sort;
+
+$results = ApiQueryBuilder::make(User::class, $request)
+    ->defaultSorts([ Sort::make('created_at', 'desc') ])
+    ->prepare()
+    ->fetch();
+```
+
+This ensures that your API always returns predictable results even when no explicit sorting is requested.
+
 ## Resource example
 
 ```php
