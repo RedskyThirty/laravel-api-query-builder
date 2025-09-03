@@ -3,7 +3,7 @@
 A lightweight and composable query builder for Laravel APIs, inspired by GraphQL flexibility.  
 Select only the fields and relations you want. Filter, sort, paginate — cleanly.
 
-Current version: 1.0.8
+Current version: 1.0.9
 
 ## Features
 
