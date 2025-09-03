@@ -5,6 +5,36 @@ Select only the fields and relations you want. Filter, sort, paginate — cleanl
 
 Current version: 1.0.9
 
+---
+
+## Table of contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+    - [Collection Mode](#collection-mode)
+    - [Single Resource Mode](#single-resource-mode)
+    - [Usage Without Executing a Query](#usage-without-executing-a-query)
+- [Always Fields](#always-fields)
+    - [Priority Rules](#-priority-rules)
+- [Sorting](#sorting)
+    - [Basic Usage](#basic-usage)
+    - [Defining Allowed Sorts](#defining-allowed-sorts)
+    - [Default Sorts](#default-sorts)
+- [Resource example](#resource-example)
+- [Nested Relation Helpers](#nested-relation-helpers)
+    - [Usage](#usage)
+    - [Behavior](#behavior)
+    - [Signature](#signature)
+- [Demo](#demo)
+    - [Getting started](#-getting-started)
+    - [Customizing the Demo](#-customizing-the-demo)
+- [Example URLs](#example-urls)
+- [Requirements](#requirements)
+- [License](#license)
+
+---
+
 ## Features
 
 - ✅ Dynamic field selection (`fields[users]=name,email`)
