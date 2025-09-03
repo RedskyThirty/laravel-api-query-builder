@@ -3,7 +3,37 @@
 A lightweight and composable query builder for Laravel APIs, inspired by GraphQL flexibility.  
 Select only the fields and relations you want. Filter, sort, paginate — cleanly.
 
-Current version: 1.0.9
+Current version: 1.0.10
+
+---
+
+## Table of contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+    - [Collection Mode](#collection-mode)
+    - [Single Resource Mode](#single-resource-mode)
+    - [Usage Without Executing a Query](#usage-without-executing-a-query)
+- [Always Fields](#always-fields)
+    - [Priority Rules](#-priority-rules)
+- [Sorting](#sorting)
+    - [Basic Usage](#basic-usage)
+    - [Defining Allowed Sorts](#defining-allowed-sorts)
+    - [Default Sorts](#default-sorts)
+- [Resource example](#resource-example)
+- [Nested Relation Helpers](#nested-relation-helpers)
+    - [Usage](#usage)
+    - [Behavior](#behavior)
+    - [Signature](#signature)
+- [Demo](#demo)
+    - [Getting started](#-getting-started)
+    - [Customizing the Demo](#-customizing-the-demo)
+- [Example URLs](#example-urls)
+- [Requirements](#requirements)
+- [License](#license)
+
+---
 
 ## Features
 
@@ -202,22 +232,68 @@ This ensures that your API always returns predictable results even when no expli
 
 ```php
 class UserResource extends ApiResource {
-	protected function defaultFields(): array {
-		return ['id', 'email', 'profile', 'created_at', 'updated_at'];
-	}
+    protected function defaultFields(): array {
+        return ['id', 'email', 'profile', 'created_at', 'updated_at'];
+    }
 
-	protected function data(): array {
-		return [
-			'id' => $this->id,
-			'email' => $this->email,
-			'profile' => $this->whenLoaded('profile', fn () => new ProfileResource($this->profile)),
-			'posts' => $this->whenLoaded('posts', fn () => PostResource::collection($this->posts)),
-			'created_at' => $this->created_at,
-			'updated_at' => $this->updated_at
-		];
-	}
+    protected function data(): array {
+        return [
+            'id' => $this->id,
+            'email' => $this->email,
+            'profile' => $this->whenLoaded('profile', fn () => new ProfileResource($this->profile)),
+            'posts' => $this->whenLoaded('posts', fn () => PostResource::collection($this->posts)),
+            'created_at' => $this->created_at,
+            'updated_at' => $this->updated_at
+        ];
+    }
 }
 ```
+
+## Nested Relation Helpers
+
+Sometimes you may want to include data in a **Resource** only if a **nested relation** has been loaded.  
+Laravel provides the `whenLoaded()` method but it only works with **direct relations**.
+
+To solve this, the package includes the `HasNestedWhenLoaded` trait.
+
+### Usage
+
+```php
+use RedskyEnvision\ApiQueryBuilder\Resources\Concerns\HasNestedWhenLoaded;
+
+class ContactResource extends ApiResource {
+    use HasNestedWhenLoaded;
+
+    protected function data(): array {
+        return [
+            'id' => $this->id,
+            'user_id' => $this->user_id,
+            
+            // Only included if both "user" and "profile" are eager-loaded
+            'profile' => $this->whenNestedLoaded(
+                'user.profile',
+                fn () => new ProfileResource($this->user->profile)
+            ),
+        ];
+    }
+}
+```
+
+### Behavior
+
+- If the full relation chain (`user.profile`) is loaded → the callback is executed.
+- If any intermediate relation is missing → the default value (`null`) is returned.
+- Supports unlimited depth (e.g. `user.profile.address.country`).
+
+### Signature
+
+```php
+whenNestedLoaded(string $relation, callable $callback, mixed $default = null): mixed
+```
+
+- `$relation`: Nested relation using dot notation (`parent.child.grandchild`).
+- `$callback`: Function executed if all relations in the chain are loaded.
+- `$default`: Value returned if the relation is not loaded (defaults to `null`).
 
 ## Demo
 
