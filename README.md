@@ -202,22 +202,68 @@ This ensures that your API always returns predictable results even when no expli
 
 ```php
 class UserResource extends ApiResource {
-	protected function defaultFields(): array {
-		return ['id', 'email', 'profile', 'created_at', 'updated_at'];
-	}
+    protected function defaultFields(): array {
+        return ['id', 'email', 'profile', 'created_at', 'updated_at'];
+    }
 
-	protected function data(): array {
-		return [
-			'id' => $this->id,
-			'email' => $this->email,
-			'profile' => $this->whenLoaded('profile', fn () => new ProfileResource($this->profile)),
-			'posts' => $this->whenLoaded('posts', fn () => PostResource::collection($this->posts)),
-			'created_at' => $this->created_at,
-			'updated_at' => $this->updated_at
-		];
-	}
+    protected function data(): array {
+        return [
+            'id' => $this->id,
+            'email' => $this->email,
+            'profile' => $this->whenLoaded('profile', fn () => new ProfileResource($this->profile)),
+            'posts' => $this->whenLoaded('posts', fn () => PostResource::collection($this->posts)),
+            'created_at' => $this->created_at,
+            'updated_at' => $this->updated_at
+        ];
+    }
 }
 ```
+
+## Nested Relation Helpers
+
+Sometimes you may want to include data in a **Resource** only if a **nested relation** has been loaded.  
+Laravel provides the `whenLoaded()` method but it only works with **direct relations**.
+
+To solve this, the package includes the `HasNestedWhenLoaded` trait.
+
+### Usage
+
+```php
+use RedskyEnvision\ApiQueryBuilder\Resources\Concerns\HasNestedWhenLoaded;
+
+class ContactResource extends ApiResource {
+    use HasNestedWhenLoaded;
+
+    protected function data(): array {
+        return [
+            'id' => $this->id,
+            'user_id' => $this->user_id,
+            
+            // Only included if both "user" and "profile" are eager-loaded
+            'profile' => $this->whenNestedLoaded(
+                'user.profile',
+                fn () => new ProfileResource($this->user->profile)
+            ),
+        ];
+    }
+}
+```
+
+### Behavior
+
+- If the full relation chain (`user.profile`) is loaded → the callback is executed.
+- If any intermediate relation is missing → the default value (`null`) is returned.
+- Supports unlimited depth (e.g. `user.profile.address.country`).
+
+### Signature
+
+```php
+whenNestedLoaded(string $relation, callable $callback, mixed $default = null): mixed
+```
+
+- `$relation`: Nested relation using dot notation (`parent.child.grandchild`).
+- `$callback`: Function executed if all relations in the chain are loaded.
+- `$default`: Value returned if the relation is not loaded (defaults to `null`).
 
 ## Demo
 
