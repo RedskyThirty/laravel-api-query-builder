@@ -88,7 +88,7 @@ class ApiQueryBuilder {
 	/**
 	 * @var string[] List of allowed local scopes on the root model
 	 */
-	private array $allowedScopes = ['*'];
+	private array $allowedScopes = [];
 	
 	/**
 	 * @var array<string, string[]> | string[] List of allowed fields per table or global
@@ -581,9 +581,7 @@ class ApiQueryBuilder {
 	 */
 	private function isAllowedScope(string $scope): bool {
 		$normalized = $this->normalizeScopeName($scope);
-		
-		$ok = (count($this->allowedScopes) === 1 && $this->allowedScopes[0] === '*')
-			|| in_array($normalized, $this->allowedScopes, true);
+		$ok = (count($this->allowedScopes) === 1 && $this->allowedScopes[0] === '*') || in_array($normalized, $this->allowedScopes, true);
 		
 		if ($this->strictMode && !$ok) {
 			throw new InvalidArgumentException('Scope "'.$normalized.'" is not allowed.');
@@ -812,11 +810,13 @@ class ApiQueryBuilder {
 	 */
 	private function applyScopes(): void {
 		$raw = (string)$this->request->input('scopes', '');
+		
 		if ($raw === '') {
 			return;
 		}
 		
 		$scopes = array_filter(array_map('trim', explode(self::URI_SEPARATOR_AND, $raw)));
+		
 		if (empty($scopes)) {
 			return;
 		}
@@ -827,22 +827,25 @@ class ApiQueryBuilder {
 			$normalized = $this->normalizeScopeName($scope);
 			
 			if (!$this->isAllowedScope($normalized)) {
-				// in non-strict mode just skip
-				continue;
+				continue; // In non-strict mode just skip
 			}
 			
 			// Ensure the local scope actually exists on the model
+			
 			$scopeMethod = 'scope'.ucfirst($normalized);
+			
 			if (!method_exists($model, $scopeMethod)) {
 				if ($this->strictMode) {
 					throw new InvalidArgumentException(
 						'Scope "'.$normalized.'" does not exist on model '.get_class($model).'.'
 					);
 				}
+				
 				continue;
 			}
 			
 			// Call it as a dynamic scope on the builder (no arguments support for now)
+			
 			$this->query = $this->query->{$normalized}();
 		}
 	}
