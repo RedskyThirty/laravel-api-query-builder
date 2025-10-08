@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -11,6 +12,11 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
+/**
+ * Class User
+ *
+ * @package App\Models
+ */
 class User extends Authenticatable {
 	/** @use HasFactory<\Database\Factories\UserFactory> */
 	use HasUuids, HasFactory, Notifiable;
@@ -48,6 +54,9 @@ class User extends Authenticatable {
 		];
 	}
 
+	/**
+	 * @return HasOne
+	 */
 	public function profile(): HasOne {
 		return $this->hasOne(Profile::class);
 	}
@@ -59,7 +68,18 @@ class User extends Authenticatable {
 		return $this->morphMany(Address::class, 'model');
 	}
 
+	/**
+	 * @return HasMany
+	 */
 	public function posts(): HasMany {
 		return $this->hasMany(Post::class);
+	}
+
+	/**
+	 * @param Builder $query
+	 * @return Builder
+	 */
+	public function scopeUnverified(Builder $query): Builder {
+		return $query->whereNull('email_verified_at');
 	}
 }
