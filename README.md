@@ -3,7 +3,7 @@
 A lightweight and composable query builder for Laravel APIs, inspired by GraphQL flexibility.  
 Select only the fields and relations you want. Filter, sort, paginate — cleanly.
 
-Current version: 1.0.10
+Current version: 1.1.0
 
 ---
 
@@ -21,6 +21,11 @@ Current version: 1.0.10
     - [Basic Usage](#basic-usage)
     - [Defining Allowed Sorts](#defining-allowed-sorts)
     - [Default Sorts](#default-sorts)
+- [Local Scopes](#local-scopes)
+    - [Basic Usage](#basic-usage)
+    - [Whitelisting Allowed Scopes](#whitelisting-allowed-scopes)
+    - [Syntax Variants](#syntax-variants)
+    - [Wildcard Mode](#wildcard-mode)
 - [Resource example](#resource-example)
 - [Nested Relation Helpers](#nested-relation-helpers)
     - [Usage](#usage)
@@ -67,6 +72,7 @@ use RedskyEnvision\ApiQueryBuilder\Sorts\Sort;
 
 $results = ApiQueryBuilder::make(User::class, $request)
     ->allowedRelations(['profile', 'addresses', 'posts', 'posts.comments'])
+    ->allowedScopes(['unverified'])
     ->allowedFields([
         'users' => ['id', 'email', 'created_at', 'profile', 'addresses', 'posts'],
         'profiles' => ['*'],
@@ -228,6 +234,66 @@ $results = ApiQueryBuilder::make(User::class, $request)
 
 This ensures that your API always returns predictable results even when no explicit sorting is requested.
 
+## Local Scopes
+
+The query builder supports applying **Eloquent local scopes** directly from the URL via the `scopes` parameter.
+
+Local scopes let you encapsulate commonly used query constraints in your models (e.g. `scopeUnverified()` → `unverified()`).
+
+### Basic Usage
+
+```sh
+GET /api/users?scopes=unverified
+```
+
+This will automatically call the method `scopeUnverified()` defined on the `User` model — equivalent to:
+
+```php
+User::unverified()->get();
+```
+
+You can also pass multiple scopes separated by commas:
+
+```sh
+GET /api/users?scopes=unverified,visibleOnly
+```
+
+> **Note:** Scopes are applied **only to the root model**, not to nested relations.
+
+### Whitelisting Allowed Scopes
+
+To control which scopes can be applied from the URL, use the `allowedScopes()` method:
+
+```php
+$results = ApiQueryBuilder::make(User::class, $request)
+->allowedScopes(['unverified', 'visibleOnly'])
+->prepare()
+->fetch();
+```
+
+If a request includes a scope that is not allowed, it will either:
+- be ignored (in **non-strict mode**), or
+- throw an `InvalidArgumentException` (in **strict mode**, enabled by default).
+
+### Syntax Variants
+
+The following formats are all accepted and automatically normalized:
+
+| Input               | Invoked Scope |
+|---------------------|----------------|
+| `unverified`        | `scopeUnverified()` |
+| `unverified()`      | `scopeUnverified()` |
+| `scopeUnverified`   | `scopeUnverified()` |
+| `scopeUnverified()` | `scopeUnverified()` |
+
+### Wildcard Mode
+
+To allow **all** local scopes to be accessible (not recommended in public APIs):
+
+```php
+->allowedScopes(['*'])
+```
+
 ## Resource example
 
 ```php
@@ -361,7 +427,13 @@ GET /api/users?
     relations=posts,posts.comments,profile,addresses
 ```
 
-### 4. Filter with equals, OR and AND
+### 4. Apply local scope
+
+```
+GET /api/users?scopes=unverified
+```
+
+### 5. Filter with equals, OR and AND
 
 ```
 GET /api/users?
@@ -389,7 +461,7 @@ GET /api/users?
     where[profile.firstname]=!john,!jane
 ```
 
-### 5. Filter with operators
+### 6. Filter with operators
 
 ```
 GET /api/users?
@@ -405,7 +477,7 @@ GET /api/users?
     where[created_at]=lte:2023-12-31%2023:59:59|gte:2025-01-01%2000:00:00
 ```
 
-### 6. Search (LIKE)
+### 7. Search (LIKE)
 
 ```
 GET /api/users?
@@ -425,14 +497,14 @@ GET /api/users?
     like[email]=!gmail,!yahoo
 ```
 
-### 7. Sort results
+### 8. Sort results
 
 ```
 GET /api/users?orderby=email
 GET /api/users?orderby=-created_at
 ```
 
-### 8. Pagination
+### 9. Pagination
 
 ```
 GET /api/users?
@@ -442,7 +514,7 @@ GET /api/users?
     per_page=10
 ```
 
-### 9. "Single Resource Mode" and "Without Executing a Query"
+### 10. "Single Resource Mode" and "Without Executing a Query"
 
 All URL parameters related to **field selection** demonstrated above can also be used with single-resource endpoints like `/api/users/{id}` or `/api/users/random`.
 

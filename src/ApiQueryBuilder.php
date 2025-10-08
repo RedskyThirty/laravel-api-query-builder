@@ -86,6 +86,11 @@ class ApiQueryBuilder {
 	private array $allowedRelations = [];
 	
 	/**
+	 * @var string[] List of allowed local scopes on the root model
+	 */
+	private array $allowedScopes = ['*'];
+	
+	/**
 	 * @var array<string, string[]> | string[] List of allowed fields per table or global
 	 */
 	private array $allowedFields = ['*'];
@@ -179,6 +184,16 @@ class ApiQueryBuilder {
 	 */
 	public function allowedRelations(array $relations): self {
 		$this->allowedRelations = $relations;
+		
+		return $this;
+	}
+	
+	/**
+	 * @param string[] $scopes Value can be ['*'] or ['archived', 'published', ...]
+	 * @return $this
+	 */
+	public function allowedScopes(array $scopes): self {
+		$this->allowedScopes = $scopes;
 		
 		return $this;
 	}
@@ -334,6 +349,10 @@ class ApiQueryBuilder {
 		}
 		
 		$relations = null;
+		
+		// Apply root model scopes (if any)
+		
+		$this->applyScopes();
 		
 		// Apply filtering and sorting to the query
 		
@@ -555,6 +574,25 @@ class ApiQueryBuilder {
 	}
 	
 	/**
+	 * Checks if a scope is allowed.
+	 *
+	 * @param string $scope
+	 * @return bool
+	 */
+	private function isAllowedScope(string $scope): bool {
+		$normalized = $this->normalizeScopeName($scope);
+		
+		$ok = (count($this->allowedScopes) === 1 && $this->allowedScopes[0] === '*')
+			|| in_array($normalized, $this->allowedScopes, true);
+		
+		if ($this->strictMode && !$ok) {
+			throw new InvalidArgumentException('Scope "'.$normalized.'" is not allowed.');
+		}
+		
+		return $ok;
+	}
+	
+	/**
 	 * Checks if a filter is allowed.
 	 *
 	 * @param string $relation
@@ -595,6 +633,27 @@ class ApiQueryBuilder {
 		}
 		
 		return $ok;
+	}
+	
+	/**
+	 * Normalize a scope identifier to its invokable name on the query builder.
+	 * Examples:
+	 * - 'archived'        -> 'archived'
+	 * - 'archived()'      -> 'archived'
+	 * - 'scopeArchived'   -> 'archived'
+	 * - 'scopeArchived()' -> 'archived'
+	 *
+	 * @param string $scope
+	 * @return string
+	 */
+	private function normalizeScopeName(string $scope): string {
+		$name = rtrim(trim($scope), '()');
+		
+		if (str_starts_with($name, 'scope')) {
+			$name = substr($name, 5); // Remove leading "scope"
+		}
+		
+		return lcfirst($name);
 	}
 	
 	/**
@@ -743,6 +802,49 @@ class ApiQueryBuilder {
 		}
 		
 		$foreignKey = null;
+	}
+	
+	/**
+	 * Applies root-model local scopes from the request (?scopes=...).
+	 * Only affects the main query; never touches nested relations.
+	 *
+	 * @return void
+	 */
+	private function applyScopes(): void {
+		$raw = (string)$this->request->input('scopes', '');
+		if ($raw === '') {
+			return;
+		}
+		
+		$scopes = array_filter(array_map('trim', explode(self::URI_SEPARATOR_AND, $raw)));
+		if (empty($scopes)) {
+			return;
+		}
+		
+		$model = $this->query->getModel();
+		
+		foreach ($scopes as $scope) {
+			$normalized = $this->normalizeScopeName($scope);
+			
+			if (!$this->isAllowedScope($normalized)) {
+				// in non-strict mode just skip
+				continue;
+			}
+			
+			// Ensure the local scope actually exists on the model
+			$scopeMethod = 'scope'.ucfirst($normalized);
+			if (!method_exists($model, $scopeMethod)) {
+				if ($this->strictMode) {
+					throw new InvalidArgumentException(
+						'Scope "'.$normalized.'" does not exist on model '.get_class($model).'.'
+					);
+				}
+				continue;
+			}
+			
+			// Call it as a dynamic scope on the builder (no arguments support for now)
+			$this->query = $this->query->{$normalized}();
+		}
 	}
 	
 	/**
