@@ -13,6 +13,7 @@ use RedskyEnvision\ApiQueryBuilder\Sorts\Sort;
 Route::get('/users', function (Request $request) {
 	$results = ApiQueryBuilder::make(User::class, $request)
 		->allowedRelations(['profile', 'addresses', 'posts', 'posts.comments'])
+		->allowedScopes(['unverified'])
 		->allowedFields([
 			'users' => ['id', 'email', 'created_at', 'profile', 'addresses', 'posts'],
 			'profiles' => ['*'],
