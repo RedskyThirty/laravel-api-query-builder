@@ -336,19 +336,68 @@ class ApiQueryBuilder {
 		
 		$relations = array_filter(array_map('trim', explode(self::URI_SEPARATOR_AND, $this->request->input('relations', ''))));
 		
+		/*
+		 * -REMINDER-
+		 *
+		 * ⚠️ Do NOT reuse the old code below.
+		 * It may look simpler, but it causes a critical issue when loading nested relations.
+		 * Specifically, multiple calls to `$builder->with(['relation' => ...])` using the same
+		 * root relation (e.g. `users.profile` and `users.roles`) will overwrite each other.
+		 * As a result, only the last one will be loaded. The current implementation groups
+		 * relations by root to avoid this problem.
+		 */
+		
+		// foreach ($relations as $relation) {
+		// 	if ($this->isAllowedRelation($relation)) {
+		// 		$relationSegments = explode('.', $relation);
+		//
+		// 		// Apply with() + field selection on nested relations
+		//
+		// 		$this->applyNestedWith($this->query, $relationSegments);
+		//
+		// 		$relationSegments = null;
+		// 	}
+		// }
+		
+		// Group relations by root to prevent overwriting nested ones
+		
+		$grouped = [];
+		
 		foreach ($relations as $relation) {
 			if ($this->isAllowedRelation($relation)) {
-				$relationSegments = explode('.', $relation);
+				$segments = explode('.', $relation, 2);
+				$root = $segments[0];
 				
-				// Apply with() + field selection on nested relations
+				if (!isset($grouped[$root])) {
+					$grouped[$root] = [];
+				}
 				
-				$this->applyNestedWith($this->query, $relationSegments);
-				
-				$relationSegments = null;
+				if (isset($segments[1])) {
+					$grouped[$root][] = $segments[1];
+				}
 			}
 		}
 		
+		// Apply merged relations to the query builder
+		
+		foreach ($grouped as $root => $nested) {
+			$this->query->with([$root => function ($q) use ($root, $nested) {
+				// If no nested relations, nothing to apply
+				
+				if (empty($nested)) {
+					return;
+				}
+				
+				// Apply with() + field selection on each nested relation recursively
+				
+				foreach ($nested as $sub) {
+					$this->applyNestedWith($q, explode('.', $sub), $root);
+				}
+			}]);
+		}
+		
 		$relations = null;
+		$grouped = null;
 		
 		// Apply root model scopes (if any)
 		
