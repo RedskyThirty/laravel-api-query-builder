@@ -280,6 +280,24 @@ class ApiQueryBuilder {
 	}
 	
 	/**
+	 * @param bool $allowedOnly
+	 * @return string[]
+	 */
+	public function getRequestedRelations(bool $allowedOnly = true): array {
+		$relations = $this->explodeRequestedRelations();
+		
+		if (empty($relations)) {
+			return [];
+		}
+		
+		if ($allowedOnly) {
+			$relations = array_filter($relations, fn ($relation) => $this->isAllowedRelation($relation));
+		}
+		
+		return array_values($relations);
+	}
+	
+	/**
 	 * Applies allowed field selection and relations to the query.
 	 * Applies allowed field selection, eager loads relations,
 	 * and applies filters and sorting to the base query.
@@ -334,7 +352,7 @@ class ApiQueryBuilder {
 		
 		// Load requested and allowed relations recursively
 		
-		$relations = array_filter(array_map('trim', explode(self::URI_SEPARATOR_AND, $this->request->input('relations', ''))));
+		$relations = $this->explodeRequestedRelations();
 		
 		/*
 		 * -REMINDER-
@@ -464,6 +482,10 @@ class ApiQueryBuilder {
 	public function prepareWithoutQuery(): self {
 		$model = $this->query->getModel();
 		$modelTable = $model->getTable();
+		
+		// Check requested relations
+		
+		$this->checkRequestedRelations();
 		
 		// Parse and register fields for the root model
 		
@@ -606,6 +628,14 @@ class ApiQueryBuilder {
 		}
 	}
 	
+	
+	/**
+	 * @return string[]
+	 */
+	private function explodeRequestedRelations(): array {
+		return array_filter(array_map('trim', explode(self::URI_SEPARATOR_AND, $this->request->input('relations', ''))));
+	}
+	
 	/**
 	 * Checks if a relation is allowed.
 	 *
@@ -620,6 +650,19 @@ class ApiQueryBuilder {
 		}
 		
 		return $ok;
+	}
+	
+	/**
+	 * @return void
+	 */
+	private function checkRequestedRelations(): void {
+		$relations = $this->explodeRequestedRelations();
+		
+		if (!empty($relations)) {
+			foreach ($relations as $relation) {
+				$this->isAllowedRelation($relation);
+			}
+		}
 	}
 	
 	/**
