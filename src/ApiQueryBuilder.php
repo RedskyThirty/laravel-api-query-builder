@@ -280,6 +280,24 @@ class ApiQueryBuilder {
 	}
 	
 	/**
+	 * @param bool $allowedOnly
+	 * @return array
+	 */
+	public function getRequestedRelations(bool $allowedOnly = true): array {
+		$relations = array_filter(array_map('trim', explode(self::URI_SEPARATOR_AND, $this->request->input('relations', ''))));
+		
+		if (empty($relations)) {
+			return [];
+		}
+		
+		if ($allowedOnly) {
+			$relations = array_filter($relations, fn ($relation) => $this->isAllowedRelation($relation));
+		}
+		
+		return array_values($relations);
+	}
+	
+	/**
 	 * Applies allowed field selection and relations to the query.
 	 * Applies allowed field selection, eager loads relations,
 	 * and applies filters and sorting to the base query.
