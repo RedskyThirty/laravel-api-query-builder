@@ -399,17 +399,62 @@ class ApiQueryBuilder {
 		// Apply merged relations to the query builder
 		
 		foreach ($grouped as $root => $nested) {
-			$this->query->with([$root => function ($q) use ($root, $nested) {
-				// If no nested relations, nothing to apply
+			// Resolve the root relation instance on the base model
+			
+			if (!method_exists($this->query->getModel(), $root)) {
+				// Skip silently in non-strict mode; throw if strict is desired
 				
-				if (empty($nested)) {
-					return;
+				if ($this->strictMode) {
+					throw new InvalidRelationException('Relation "'.$root.'" does not exist on model '.get_class($this->query->getModel()).'.');
 				}
 				
-				// Apply with() + field selection on each nested relation recursively
+				continue;
+			}
+			
+			$rootRelation = $this->query->getModel()->{$root}();
+			
+			// Abort if it's not an Eloquent relation
+			
+			if (!($rootRelation instanceof Relation)) {
+				if ($this->strictMode) {
+					throw new InvalidRelationException('Member "'.$root.'" is not a valid Eloquent relation.');
+				}
 				
-				foreach ($nested as $sub) {
-					$this->applyNestedWith($q, explode('.', $sub), $root);
+				continue;
+			}
+			
+			$relatedModel = $rootRelation->getRelated();
+			$relatedTable = $relatedModel->getTable();
+			
+			$this->query->with([$root => function ($q) use ($root, $nested, $rootRelation, $relatedModel, $relatedTable) {
+				// Always parse and apply field selection on the root relation itself
+				
+				$fields = $this->parseFields($this->request, $relatedTable);
+				
+				if (!$this->isSelectingAll($fields)) {
+					// Ensure "id" is present
+					
+					if (!in_array('id', $fields)) {
+						$fields[] = 'id';
+					}
+					
+					// Include the foreign key if needed (HasOne/HasMany)
+					
+					if ($rootRelation instanceof HasOneOrMany) {
+						$this->addRelationForeignKeys($rootRelation, $fields);
+					}
+					
+					// Apply the SELECT to the relation query
+					
+					$this->selectSelectableColumns($q, $relatedTable, $fields);
+				}
+				
+				// Now handle nested segments (if any) using the existing recursive logic
+				
+				if (!empty($nested)) {
+					foreach ($nested as $sub) {
+						$this->applyNestedWith($q, explode('.', $sub), $root, $relatedModel);
+					}
 				}
 			}]);
 		}
