@@ -5,6 +5,7 @@ namespace RedskyEnvision\ApiQueryBuilder;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidFieldException;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidFilterException;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidRelationException;
+use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidScopeException;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidSortException;
 use RedskyEnvision\ApiQueryBuilder\Registries\FieldRegistry;
 use RedskyEnvision\ApiQueryBuilder\Sorts\Sort;
@@ -64,11 +65,11 @@ class ApiQueryBuilder {
 	/**
 	 * @var string Greater than operator prefix
 	 */
-	private const string URI_OPERATOR_GREATHER_THAN = 'gt:';
+	private const string URI_OPERATOR_GREATER_THAN = 'gt:';
 	/**
 	 * @var string Greater than or equal operator prefix
 	 */
-	private const string URI_OPERATOR_GREATHER_THAN_OR_EQUAL = 'gte:';
+	private const string URI_OPERATOR_GREATER_THAN_OR_EQUAL = 'gte:';
 	
 	/**
 	 * @var Builder The Eloquent query builder instance
@@ -119,6 +120,11 @@ class ApiQueryBuilder {
 	 * @var int Default number of results per page
 	 */
 	private int $defaultPerPage = 25;
+	
+	/**
+	 * @var int Maximum allowed number of results per page
+	 */
+	private int $maxPerPage = 250;
 	
 	/**
 	 * @var bool Indicates if prepare() was called
@@ -257,6 +263,16 @@ class ApiQueryBuilder {
 	 */
 	public function defaultPerPage(int $count): self {
 		$this->defaultPerPage = $count;
+		
+		return $this;
+	}
+	
+	/**
+	 * @param int $count
+	 * @return $this
+	 */
+	public function maxPerPage(int $count): self {
+		$this->maxPerPage = $count;
 		
 		return $this;
 	}
@@ -432,21 +448,7 @@ class ApiQueryBuilder {
 				$fields = $this->parseFields($this->request, $relatedTable);
 				
 				if (!$this->isSelectingAll($fields)) {
-					// Ensure "id" is present
-					
-					if (!in_array('id', $fields)) {
-						$fields[] = 'id';
-					}
-					
-					// Include the foreign key if needed (HasOne/HasMany)
-					
-					if ($rootRelation instanceof HasOneOrMany) {
-						$this->addRelationForeignKeys($rootRelation, $fields);
-					}
-					
-					// Apply the SELECT to the relation query
-					
-					$this->selectSelectableColumns($q, $relatedTable, $fields);
+					$this->prepareRelationSelect($q, $rootRelation, $relatedTable, $fields);
 				}
 				
 				// Now handle nested segments (if any) using the existing recursive logic
@@ -564,6 +566,31 @@ class ApiQueryBuilder {
 	}
 	
 	/**
+	 * @param Builder|Relation $query
+	 * @param Relation $relationInstance
+	 * @param string $relatedTable
+	 * @param array $fields
+	 * @return void
+	 */
+	private function prepareRelationSelect(Builder | Relation $query, Relation $relationInstance, string $relatedTable, array &$fields): void {
+		// Always ensure "id" field is present
+		
+		if (!in_array('id', $fields)) {
+			$fields[] = 'id';
+		}
+		
+		// Add required foreign key if the relation is HasOne or HasMany
+		
+		if ($relationInstance instanceof HasOneOrMany) {
+			$this->addRelationForeignKeys($relationInstance, $fields);
+		}
+		
+		// Apply the field selection to the relation query
+		
+		$this->selectSelectableColumns($query, $relatedTable, $fields);
+	}
+	
+	/**
 	 * Applies nested `with()` eager loading and selects fields for each related model.
 	 *
 	 *  This method recursively traverses the relation chain and ensures:
@@ -619,21 +646,7 @@ class ApiQueryBuilder {
 			$fields = $this->parseFields($this->request, $relatedTable);
 			
 			if (!$this->isSelectingAll($fields)) {
-				// Always include 'id' field
-				
-				if (!in_array('id', $fields)) {
-					$fields[] = 'id';
-				}
-				
-				// Add required foreign key if the relation is HasOne or HasMany
-				
-				if ($relationInstance instanceof HasOneOrMany) {
-					$this->addRelationForeignKeys($relationInstance, $fields);
-				}
-				
-				// Apply the field selection to the relation query
-				
-				$this->selectSelectableColumns($q, $relatedTable, $fields);
+				$this->prepareRelationSelect($q, $relationInstance, $relatedTable, $fields);
 			}
 			
 			$fields = null;
@@ -672,7 +685,6 @@ class ApiQueryBuilder {
 			}
 		}
 	}
-	
 	
 	/**
 	 * @return string[]
@@ -721,7 +733,7 @@ class ApiQueryBuilder {
 		$ok = (count($this->allowedScopes) === 1 && $this->allowedScopes[0] === '*') || in_array($normalized, $this->allowedScopes, true);
 		
 		if ($this->strictMode && !$ok) {
-			throw new InvalidArgumentException('Scope "'.$normalized.'" is not allowed.');
+			throw new InvalidScopeException('Scope "'.$normalized.'" is not allowed.');
 		}
 		
 		return $ok;
@@ -922,21 +934,27 @@ class ApiQueryBuilder {
 	 * @return void
 	 */
 	private function addRelationForeignKeys(BelongsTo | HasOneOrMany $relationInstance, array &$fields): void {
+		// Always include the related foreign key if not already present
+		
 		$foreignKey = $relationInstance->getForeignKeyName();
 		
-		// Add the foreign key if not already present
-		
-		if (!in_array($foreignKey, $fields)) {
+		if (!in_array($foreignKey, $fields, true)) {
 			$fields[] = $foreignKey;
-			
-			// Special handling for polymorphic relations (morphTo)
-			
-			if ($foreignKey === 'model_id' && !in_array('model_type', $fields)) {
-				$fields[] = 'model_type';
-			}
 		}
 		
-		$foreignKey = null;
+		// If the relation is polymorphic, also include its morph type column
+		
+		if (method_exists($relationInstance, 'getMorphType')) {
+			$morphType = $relationInstance->getMorphType();
+			
+			if (!in_array($morphType, $fields, true)) {
+				$fields[] = $morphType;
+			}
+		} else if ($foreignKey === 'model_id' && !in_array('model_type', $fields, true)) {
+			// Special handling for polymorphic relations (morphTo) using "model_type/model_id"
+			
+			$fields[] = 'model_type';
+		}
 	}
 	
 	/**
@@ -1009,14 +1027,14 @@ class ApiQueryBuilder {
 			(
 				str_starts_with($value, self::URI_OPERATOR_LESS_THAN) ||
 				str_starts_with($value, self::URI_OPERATOR_LESS_THAN_OR_EQUAL) ||
-				str_starts_with($value, self::URI_OPERATOR_GREATHER_THAN) ||
-				str_starts_with($value, self::URI_OPERATOR_GREATHER_THAN_OR_EQUAL)
+				str_starts_with($value, self::URI_OPERATOR_GREATER_THAN) ||
+				str_starts_with($value, self::URI_OPERATOR_GREATER_THAN_OR_EQUAL)
 			)
 		) {
 			if (!$this->strictMode) {
 				return;
 			} else {
-				throw new InvalidFilterException('Operators "'.self::URI_OPERATOR_LESS_THAN.'", "'.self::URI_OPERATOR_LESS_THAN_OR_EQUAL.'", "'.self::URI_OPERATOR_GREATHER_THAN.'" and "'.self::URI_OPERATOR_GREATHER_THAN_OR_EQUAL.'" are not allowed with "'.self::FILTER_TYPE_LIKE.'" filter, only with "'.self::FILTER_TYPE_WHERE.'".');
+				throw new InvalidFilterException('Operators "'.self::URI_OPERATOR_LESS_THAN.'", "'.self::URI_OPERATOR_LESS_THAN_OR_EQUAL.'", "'.self::URI_OPERATOR_GREATER_THAN.'" and "'.self::URI_OPERATOR_GREATER_THAN_OR_EQUAL.'" are not allowed with "'.self::FILTER_TYPE_LIKE.'" filter, only with "'.self::FILTER_TYPE_WHERE.'".');
 			}
 		}
 		
@@ -1035,12 +1053,12 @@ class ApiQueryBuilder {
 			} else if (str_starts_with($value, self::URI_OPERATOR_LESS_THAN_OR_EQUAL)) {
 				$whereOperator = '<=';
 				$value = substr($value, strlen(self::URI_OPERATOR_LESS_THAN_OR_EQUAL));
-			} else if (str_starts_with($value, self::URI_OPERATOR_GREATHER_THAN)) {
+			} else if (str_starts_with($value, self::URI_OPERATOR_GREATER_THAN)) {
 				$whereOperator = '>';
-				$value = substr($value, strlen(self::URI_OPERATOR_GREATHER_THAN));
-			} else if (str_starts_with($value, self::URI_OPERATOR_GREATHER_THAN_OR_EQUAL)) {
+				$value = substr($value, strlen(self::URI_OPERATOR_GREATER_THAN));
+			} else if (str_starts_with($value, self::URI_OPERATOR_GREATER_THAN_OR_EQUAL)) {
 				$whereOperator = '>=';
-				$value = substr($value, strlen(self::URI_OPERATOR_GREATHER_THAN_OR_EQUAL));
+				$value = substr($value, strlen(self::URI_OPERATOR_GREATER_THAN_OR_EQUAL));
 			} else {
 				$whereOperator = '=';
 			}
@@ -1301,6 +1319,9 @@ class ApiQueryBuilder {
 	 * @return LengthAwarePaginator
 	 */
 	private function doPaginate(int $perPage): LengthAwarePaginator {
+		// Clamp "per_page" to "$maxPerPage"
+		$perPage = max(1, min($perPage, $this->maxPerPage));
+		
 		return $this->query->paginate($perPage)->appends($this->request->query());
 	}
 }
