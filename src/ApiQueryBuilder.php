@@ -587,6 +587,29 @@ class ApiQueryBuilder {
 	}
 	
 	/**
+	 * Determine if the given column exists in the table schema.
+	 *
+	 * @param string $table
+	 * @param string $column
+	 * @return bool
+	 */
+	private function columnExists(string $table, string $column): bool {
+		// Populate cache for this table if not already done
+		
+		if (!isset(self::$columnsCache[$table])) {
+			self::$columnsCache[$table] = Schema::getColumnListing($table);
+		}
+		
+		$exists = in_array($column, self::$columnsCache[$table], true);
+		
+		if (!$exists && $this->strictMode) {
+			throw new InvalidFilterException('Column "'.$column.'" does not exist in table "'.$table.'".');
+		}
+		
+		return $exists;
+	}
+	
+	/**
 	 * Applies nested `with()` eager loading and selects fields for each related model.
 	 *
 	 *  This method recursively traverses the relation chain and ensures:
@@ -695,7 +718,6 @@ class ApiQueryBuilder {
 			}
 		}
 	}
-	
 	
 	/**
 	 * @return string[]
@@ -939,7 +961,7 @@ class ApiQueryBuilder {
 	private function selectSelectableColumns(Builder | Relation $builder, string $tableName, array $fields): void {
 		// Only keep fields that actually exist in the database table
 		
-		$selectableFields = array_filter($fields, fn ($f) => Schema::hasColumn($tableName, $f));
+		$selectableFields = array_filter($fields, fn ($f) => $this->columnExists($tableName, $f)); // 2025-11-11: "Schema::hasColumn($tableName, $f)" → "$this->columnExists($tableName, $f)"
 		
 		// If valid fields exist, apply them to the SELECT clause
 		
@@ -1173,7 +1195,9 @@ class ApiQueryBuilder {
 				
 				// Ensure field exists in schema
 				
-				if (Schema::hasColumn($modelTable, $field)) {
+				// 2025-11-11: "Schema::hasColumn($modelTable, $field)" → "$this->columnExists($modelTable, $field)"
+				
+				if ($this->columnExists($modelTable, $field)) {
 					if ($hasOr) {
 						// OR group of values
 						
