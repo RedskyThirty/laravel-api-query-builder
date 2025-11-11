@@ -982,21 +982,27 @@ class ApiQueryBuilder {
 	 * @return void
 	 */
 	private function addRelationForeignKeys(BelongsTo | HasOneOrMany $relationInstance, array &$fields): void {
+		// Always include the related foreign key if not already present
+		
 		$foreignKey = $relationInstance->getForeignKeyName();
 		
-		// Add the foreign key if not already present
-		
-		if (!in_array($foreignKey, $fields)) {
+		if (!in_array($foreignKey, $fields, true)) {
 			$fields[] = $foreignKey;
-			
-			// Special handling for polymorphic relations (morphTo)
-			
-			if ($foreignKey === 'model_id' && !in_array('model_type', $fields)) {
-				$fields[] = 'model_type';
-			}
 		}
 		
-		$foreignKey = null;
+		// If the relation is polymorphic, also include its morph type column
+		
+		if (method_exists($relationInstance, 'getMorphType')) {
+			$morphType = $relationInstance->getMorphType();
+			
+			if (!in_array($morphType, $fields, true)) {
+				$fields[] = $morphType;
+			}
+		} else if ($foreignKey === 'model_id' && !in_array('model_type', $fields, true)) {
+			// Special handling for polymorphic relations (morphTo) using "model_type/model_id"
+			
+			$fields[] = 'model_type';
+		}
 	}
 	
 	/**
