@@ -5,6 +5,7 @@ namespace RedskyEnvision\ApiQueryBuilder;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidFieldException;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidFilterException;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidRelationException;
+use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidScopeException;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidSortException;
 use RedskyEnvision\ApiQueryBuilder\Registries\FieldRegistry;
 use RedskyEnvision\ApiQueryBuilder\Sorts\Sort;
@@ -763,7 +764,7 @@ class ApiQueryBuilder {
 		$ok = (count($this->allowedScopes) === 1 && $this->allowedScopes[0] === '*') || in_array($normalized, $this->allowedScopes, true);
 		
 		if ($this->strictMode && !$ok) {
-			throw new InvalidArgumentException('Scope "'.$normalized.'" is not allowed.');
+			throw new InvalidScopeException('Scope "'.$normalized.'" is not allowed.');
 		}
 		
 		return $ok;
