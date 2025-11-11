@@ -452,21 +452,7 @@ class ApiQueryBuilder {
 				$fields = $this->parseFields($this->request, $relatedTable);
 				
 				if (!$this->isSelectingAll($fields)) {
-					// Ensure "id" is present
-					
-					if (!in_array('id', $fields)) {
-						$fields[] = 'id';
-					}
-					
-					// Include the foreign key if needed (HasOne/HasMany)
-					
-					if ($rootRelation instanceof HasOneOrMany) {
-						$this->addRelationForeignKeys($rootRelation, $fields);
-					}
-					
-					// Apply the SELECT to the relation query
-					
-					$this->selectSelectableColumns($q, $relatedTable, $fields);
+					$this->prepareRelationSelect($q, $rootRelation, $relatedTable, $fields);
 				}
 				
 				// Now handle nested segments (if any) using the existing recursive logic
@@ -610,6 +596,31 @@ class ApiQueryBuilder {
 	}
 	
 	/**
+	 * @param Builder|Relation $query
+	 * @param Relation $relationInstance
+	 * @param string $relatedTable
+	 * @param array $fields
+	 * @return void
+	 */
+	private function prepareRelationSelect(Builder | Relation $query, Relation $relationInstance, string $relatedTable, array &$fields): void {
+		// Always ensure "id" field is present
+		
+		if (!in_array('id', $fields)) {
+			$fields[] = 'id';
+		}
+		
+		// Add required foreign key if the relation is HasOne or HasMany
+		
+		if ($relationInstance instanceof HasOneOrMany) {
+			$this->addRelationForeignKeys($relationInstance, $fields);
+		}
+		
+		// Apply the field selection to the relation query
+		
+		$this->selectSelectableColumns($query, $relatedTable, $fields);
+	}
+	
+	/**
 	 * Applies nested `with()` eager loading and selects fields for each related model.
 	 *
 	 *  This method recursively traverses the relation chain and ensures:
@@ -665,21 +676,7 @@ class ApiQueryBuilder {
 			$fields = $this->parseFields($this->request, $relatedTable);
 			
 			if (!$this->isSelectingAll($fields)) {
-				// Always include 'id' field
-				
-				if (!in_array('id', $fields)) {
-					$fields[] = 'id';
-				}
-				
-				// Add required foreign key if the relation is HasOne or HasMany
-				
-				if ($relationInstance instanceof HasOneOrMany) {
-					$this->addRelationForeignKeys($relationInstance, $fields);
-				}
-				
-				// Apply the field selection to the relation query
-				
-				$this->selectSelectableColumns($q, $relatedTable, $fields);
+				$this->prepareRelationSelect($q, $relationInstance, $relatedTable, $fields);
 			}
 			
 			$fields = null;
