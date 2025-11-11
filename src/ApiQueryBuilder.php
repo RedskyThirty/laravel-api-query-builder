@@ -64,11 +64,11 @@ class ApiQueryBuilder {
 	/**
 	 * @var string Greater than operator prefix
 	 */
-	private const string URI_OPERATOR_GREATHER_THAN = 'gt:';
+	private const string URI_OPERATOR_GREATER_THAN = 'gt:';
 	/**
 	 * @var string Greater than or equal operator prefix
 	 */
-	private const string URI_OPERATOR_GREATHER_THAN_OR_EQUAL = 'gte:';
+	private const string URI_OPERATOR_GREATER_THAN_OR_EQUAL = 'gte:';
 	
 	/**
 	 * @var Builder The Eloquent query builder instance
@@ -1009,14 +1009,14 @@ class ApiQueryBuilder {
 			(
 				str_starts_with($value, self::URI_OPERATOR_LESS_THAN) ||
 				str_starts_with($value, self::URI_OPERATOR_LESS_THAN_OR_EQUAL) ||
-				str_starts_with($value, self::URI_OPERATOR_GREATHER_THAN) ||
-				str_starts_with($value, self::URI_OPERATOR_GREATHER_THAN_OR_EQUAL)
+				str_starts_with($value, self::URI_OPERATOR_GREATER_THAN) ||
+				str_starts_with($value, self::URI_OPERATOR_GREATER_THAN_OR_EQUAL)
 			)
 		) {
 			if (!$this->strictMode) {
 				return;
 			} else {
-				throw new InvalidFilterException('Operators "'.self::URI_OPERATOR_LESS_THAN.'", "'.self::URI_OPERATOR_LESS_THAN_OR_EQUAL.'", "'.self::URI_OPERATOR_GREATHER_THAN.'" and "'.self::URI_OPERATOR_GREATHER_THAN_OR_EQUAL.'" are not allowed with "'.self::FILTER_TYPE_LIKE.'" filter, only with "'.self::FILTER_TYPE_WHERE.'".');
+				throw new InvalidFilterException('Operators "'.self::URI_OPERATOR_LESS_THAN.'", "'.self::URI_OPERATOR_LESS_THAN_OR_EQUAL.'", "'.self::URI_OPERATOR_GREATER_THAN.'" and "'.self::URI_OPERATOR_GREATER_THAN_OR_EQUAL.'" are not allowed with "'.self::FILTER_TYPE_LIKE.'" filter, only with "'.self::FILTER_TYPE_WHERE.'".');
 			}
 		}
 		
@@ -1035,12 +1035,12 @@ class ApiQueryBuilder {
 			} else if (str_starts_with($value, self::URI_OPERATOR_LESS_THAN_OR_EQUAL)) {
 				$whereOperator = '<=';
 				$value = substr($value, strlen(self::URI_OPERATOR_LESS_THAN_OR_EQUAL));
-			} else if (str_starts_with($value, self::URI_OPERATOR_GREATHER_THAN)) {
+			} else if (str_starts_with($value, self::URI_OPERATOR_GREATER_THAN)) {
 				$whereOperator = '>';
-				$value = substr($value, strlen(self::URI_OPERATOR_GREATHER_THAN));
-			} else if (str_starts_with($value, self::URI_OPERATOR_GREATHER_THAN_OR_EQUAL)) {
+				$value = substr($value, strlen(self::URI_OPERATOR_GREATER_THAN));
+			} else if (str_starts_with($value, self::URI_OPERATOR_GREATER_THAN_OR_EQUAL)) {
 				$whereOperator = '>=';
-				$value = substr($value, strlen(self::URI_OPERATOR_GREATHER_THAN_OR_EQUAL));
+				$value = substr($value, strlen(self::URI_OPERATOR_GREATER_THAN_OR_EQUAL));
 			} else {
 				$whereOperator = '=';
 			}
