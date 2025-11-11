@@ -81,6 +81,13 @@ class ApiQueryBuilder {
 	private Request $request;
 	
 	/**
+	 * Cache of database columns per table to avoid multiple schema lookups.
+	 *
+	 * @var array<string, string[]>
+	 */
+	private static array $columnsCache = [];
+	
+	/**
 	 * @var string[] List of allowed relation names
 	 */
 	private array $allowedRelations = [];
@@ -361,8 +368,6 @@ class ApiQueryBuilder {
 			$this->selectSelectableColumns($this->query, $modelTable, $fields);
 		}
 		
-		$model = null;
-		$modelTable = null;
 		$fields = null;
 		
 		// Load requested and allowed relations recursively
@@ -484,7 +489,10 @@ class ApiQueryBuilder {
 		// Apply filtering and sorting to the query
 		
 		$this->filter();
-		$this->sort();
+		$this->sort($modelTable);
+		
+		$model = null;
+		$modelTable = null;
 		
 		$this->hasBeenPrepared = true;
 		
@@ -769,17 +777,32 @@ class ApiQueryBuilder {
 	 * Checks if a sort key is allowed.
 	 *
 	 * @param string $sort
+	 * @param string $modelTable
 	 * @return bool
 	 */
-	private function isAllowedSort(string $sort): bool {
+	private function isAllowedSort(string $sort, string $modelTable): bool {
 		// Remove the "-" if present to normalize the field name
 		$normalized = ltrim($sort, '-');
 		
 		// Check against allowed list (or wildcard)
 		$ok = (count($this->allowedSorts) === 1 && $this->allowedSorts[0] === '*') || in_array($normalized, $this->allowedSorts, true);
 		
+		// If the sort is allowed, ensure the column actually exists
+		
+		if ($ok) {
+			// Cache the list of columns for this table
+			
+			if (!isset(self::$columnsCache[$modelTable])) {
+				self::$columnsCache[$modelTable] = Schema::getColumnListing($modelTable);
+			}
+			
+			if (!in_array($normalized, self::$columnsCache[$modelTable], true)) {
+				$ok = false;
+			}
+		}
+		
 		if ($this->strictMode && !$ok) {
-			throw new InvalidSortException('Sort "'.$normalized.'" is not allowed.');
+			throw new InvalidSortException('Sort "'.$normalized.'" is not allowed or does not exist in the table schema.');
 		}
 		
 		return $ok;
@@ -1245,9 +1268,10 @@ class ApiQueryBuilder {
 	 * Example:
 	 * - ?orderby=name,-created_at
 	 *
+	 * @param string $modelTable
 	 * @return void
 	 */
-	private function sort(): void {
+	private function sort(string $modelTable): void {
 		// Extract and normalize the `orderby` parameter into an array
 		
 		$orderBy = array_filter(array_map('trim', explode(self::URI_SEPARATOR_AND, $this->request->input('orderby', ''))));
@@ -1261,7 +1285,7 @@ class ApiQueryBuilder {
 				
 				// Only allow sorting on whitelisted columns
 				
-				if ($this->isAllowedSort($ob)) {
+				if ($this->isAllowedSort($ob, $modelTable)) {
 					// Leading dash (-) indicates descending order
 					
 					$sorts[] = str_starts_with($ob, '-') ? Sort::make(substr($ob, 1), 'desc') : Sort::make($ob);
@@ -1317,7 +1341,6 @@ class ApiQueryBuilder {
 	 */
 	private function doPaginate(int $perPage): LengthAwarePaginator {
 		// Clamp "per_page" to "$maxPerPage"
-		
 		$perPage = max(1, min($perPage, $this->maxPerPage));
 		
 		return $this->query->paginate($perPage)->appends($this->request->query());
