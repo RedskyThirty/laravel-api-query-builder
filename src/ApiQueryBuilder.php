@@ -121,6 +121,11 @@ class ApiQueryBuilder {
 	private int $defaultPerPage = 25;
 	
 	/**
+	 * @var int Maximum allowed number of results per page
+	 */
+	private int $maxPerPage = 250;
+	
+	/**
 	 * @var bool Indicates if prepare() was called
 	 */
 	private bool $hasBeenPrepared = false;
@@ -257,6 +262,16 @@ class ApiQueryBuilder {
 	 */
 	public function defaultPerPage(int $count): self {
 		$this->defaultPerPage = $count;
+		
+		return $this;
+	}
+	
+	/**
+	 * @param int $count
+	 * @return $this
+	 */
+	public function maxPerPage(int $count): self {
+		$this->maxPerPage = $count;
 		
 		return $this;
 	}
@@ -1301,6 +1316,10 @@ class ApiQueryBuilder {
 	 * @return LengthAwarePaginator
 	 */
 	private function doPaginate(int $perPage): LengthAwarePaginator {
+		// Clamp "per_page" to "$maxPerPage"
+		
+		$perPage = max(1, min($perPage, $this->maxPerPage));
+		
 		return $this->query->paginate($perPage)->appends($this->request->query());
 	}
 }
