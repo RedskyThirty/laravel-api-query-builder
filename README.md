@@ -134,7 +134,7 @@ $user = ApiQueryBuilder::make(User::class, $request)
     ->where('id', $id)
     ->first();
 
-return $user !== null ? new UserResource($user) : NotFoundResource::make();
+return $user !== null ? UserResource::make($user) : NotFoundResource::make();
 ```
 
 ### Usage Without Executing a Query
@@ -161,7 +161,7 @@ ApiQueryBuilder::make(User::class, $request)
     ])
     ->prepareWithoutQuery();
 
-return new UserResource($user);
+return UserResource::make($user);
 ```
 
 ## Always Fields
@@ -306,7 +306,7 @@ class UserResource extends ApiResource {
         return [
             'id' => $this->id,
             'email' => $this->email,
-            'profile' => $this->whenLoaded('profile', fn () => new ProfileResource($this->profile)),
+            'profile' => $this->whenLoaded('profile', fn () => ProfileResource::make($this->profile)),
             'posts' => $this->whenLoaded('posts', fn () => PostResource::collection($this->posts)),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at
@@ -338,7 +338,7 @@ class ContactResource extends ApiResource {
             // Only included if both "user" and "profile" are eager-loaded
             'profile' => $this->whenNestedLoaded(
                 'user.profile',
-                fn () => new ProfileResource($this->user->profile)
+                fn () => ProfileResource::make($this->user->profile)
             ),
         ];
     }
