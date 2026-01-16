@@ -48,7 +48,7 @@ Route::get('/users/{id}', function (Request $request, string $id) {
 		->where('id', $id)
 		->first();
 
-	return $user !== null ? new UserResource($user) : NotFoundResource::make();
+	return $user !== null ? UserResource::make($user) : NotFoundResource::make();
 })->whereUuid('id');
 
 // Without Query
@@ -67,5 +67,5 @@ Route::get('/users/random', function (Request $request) {
 		])
 		->prepareWithoutQuery();
 
-	return new UserResource($user);
+	return UserResource::make($user);
 });

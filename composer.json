@@ -6,7 +6,7 @@
 		"redsky-envision",
 		"laravel-api-query-builder"
 	],
-	"homepage": "https://github.com/redsky-thirty/laravel-api-query-builder",
+	"homepage": "https://github.com/RedskyThirty/laravel-api-query-builder",
 	"type": "library",
 	"license": "MIT",
 	"authors": [

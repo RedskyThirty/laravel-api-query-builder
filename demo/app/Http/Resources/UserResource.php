@@ -25,7 +25,7 @@ class UserResource extends ApiResource {
 		return [
 			'id' => $this->id,
 			'email' => $this->email,
-			'profile' => $this->whenLoaded('profile', fn () => new ProfileResource($this->profile)),
+			'profile' => $this->whenLoaded('profile', fn () => ProfileResource::make($this->profile)),
 			'addresses' => $this->whenLoaded('addresses', fn () => AddressResource::collection($this->addresses)),
 			'posts' => $this->whenLoaded('posts', fn () => PostResource::collection($this->posts)),
 			'email_verified_at' => $this->email_verified_at,
