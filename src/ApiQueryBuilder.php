@@ -314,6 +314,68 @@ class ApiQueryBuilder {
 	}
 	
 	/**
+	 * Returns requested fields for every table that may appear in the request:
+	 * - root model table
+	 * - allowed relations tables (including nested)
+	 *
+	 * By default it applies allowed-only behavior (same as prepare()).
+	 *
+	 * @param bool $allowedOnly
+	 * @return array<string, string[]> Key = table name, value = requested fields for that table
+	 */
+	public function getRequestedFields(bool $allowedOnly = true): array {
+		$model = $this->query->getModel();
+		$tables = $this->resolveTablesForRootAndAllowedRelations($model);
+		
+		$out = [];
+		
+		foreach ($tables as $tableName) {
+			$out[$tableName] = $this->getRequestedFieldsFor($tableName, $allowedOnly);
+		}
+		
+		$model = null;
+		$tables = null;
+		
+		return $out;
+	}
+	
+	/**
+	 * Returns the requested fields for a single table, using the same logic as prepare():
+	 * - supports allowedFields() + strictMode via filterFields()
+	 * - appends alwaysFields[table] when selection is not wildcard
+	 * - registers the result in FieldRegistry (through parseFields)
+	 *
+	 * If no fields are specified for the table, returns ['*'].
+	 *
+	 * @param string $tableName
+	 * @param bool $allowedOnly When false, returns raw requested fields without filtering/registry.
+	 * @return string[]
+	 */
+	public function getRequestedFieldsFor(string $tableName, bool $allowedOnly = true): array {
+		if (!$allowedOnly) {
+			$fields = $this->explodeRequestedFieldsForTable($tableName);
+			return empty($fields) ? ['*'] : $fields;
+		}
+		
+		return $this->parseFields($this->request, $tableName);
+	}
+	
+	/**
+	 * Helper to check whether a specific field is requested for a table.
+	 * If wildcard is selected, always returns true.
+	 *
+	 * @param string $tableName
+	 * @param string $field
+	 * @param bool $allowedOnly
+	 * @return bool
+	 */
+	public function hasRequestedField(string $tableName, string $field, bool $allowedOnly = true): bool {
+		$fields = $this->getRequestedFieldsFor($tableName, $allowedOnly);
+		
+		return $fields === ['*'] || in_array($field, $fields, true);
+	}
+	
+	/**
 	 * Applies allowed field selection and relations to the query.
 	 * Applies allowed field selection, eager loads relations,
 	 * and applies filters and sorting to the base query.
@@ -922,6 +984,56 @@ class ApiQueryBuilder {
 		}
 		
 		$selectableFields = null;
+	}
+	
+	/**
+	 * Returns the requested fields for a single table (raw parsing only).
+	 *
+	 * @param string $tableName
+	 * @return string[]
+	 */
+	private function explodeRequestedFieldsForTable(string $tableName): array {
+		$raw = (string)$this->request->input('fields.'.$tableName, '');
+		
+		if ($raw === '') {
+			return [];
+		}
+		
+		return array_values(array_filter(array_map('trim', explode(self::URI_SEPARATOR_AND, $raw))));
+	}
+	
+	/**
+	 * Resolves all table names that may appear in `fields[...]`:
+	 * - root model table
+	 * - each related table for allowed relations (including nested)
+	 *
+	 * @param Model $rootModel
+	 * @return string[]
+	 */
+	private function resolveTablesForRootAndAllowedRelations(Model $rootModel): array {
+		$tables = [$rootModel->getTable()];
+		
+		foreach ($this->allowedRelations as $relationPath) {
+			$segments = explode('.', $relationPath);
+			$currentModel = $rootModel;
+			
+			foreach ($segments as $segment) {
+				if (!method_exists($currentModel, $segment)) {
+					break;
+				}
+				
+				$relationInstance = $currentModel->{$segment}();
+				
+				if (!($relationInstance instanceof Relation)) {
+					break;
+				}
+				
+				$currentModel = $relationInstance->getRelated();
+				$tables[] = $currentModel->getTable();
+			}
+		}
+		
+		return array_values(array_unique($tables));
 	}
 	
 	/**
