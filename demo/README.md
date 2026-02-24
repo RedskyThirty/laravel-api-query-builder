@@ -1,61 +1,148 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Laravel API Query Builder — Demo Application
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+This is a minimal embedded Laravel application used to test and explore the `laravel-api-query-builder` package locally.
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Getting started
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+```bash
+cd demo
+composer install
+php artisan migrate:fresh --seed
+php artisan serve
+```
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+Then open your browser at [http://localhost:8000/api/users](http://localhost:8000/api/users).
 
-## Learning Laravel
+---
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## Available endpoints
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+### GET `/api/users` — Collection
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+Returns a list of users. Supports field selection, relation loading, filtering, sorting, and pagination.
 
-## Laravel Sponsors
+**Allowed relations:** `profile`, `addresses`, `posts`, `posts.comments`  
+**Allowed scopes:** `unverified`  
+**Default sort:** `created_at` descending
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```
+# All users (default fields, default sort)
+GET /api/users
 
-### Premium Partners
+# With specific fields and relations
+GET /api/users?fields[users]=id,email,created_at&fields[profiles]=firstname,lastname&relations=profile
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+# With filtering
+GET /api/users?where[email]=john@example.com
+GET /api/users?like[email]=gmail
+GET /api/users?where[profile.firstname]=john|jane&relations=profile
 
-## Contributing
+# With sorting
+GET /api/users?orderby=-created_at,email
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+# With pagination
+GET /api/users?per_page=10
 
-## Code of Conduct
+# With scope
+GET /api/users?scopes=unverified
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+---
 
-## Security Vulnerabilities
+### GET `/api/users/{id}` — Single Resource
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Returns a single user by UUID. Returns a `404` JSON response if no user is found.
 
-## License
+**Allowed relations:** `profile`, `addresses`, `posts`, `posts.comments`
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+```
+GET /api/users/{uuid}
+GET /api/users/{uuid}?fields[users]=id,email&fields[posts]=title,excerpt&relations=posts
+```
+
+---
+
+### GET `/api/users/random` — Without Query
+
+Returns a randomly selected user with all relations pre-loaded, using `prepareWithoutQuery()` to apply field selection without executing any query via `ApiQueryBuilder`.
+
+```
+GET /api/users/random
+GET /api/users/random?fields[users]=id,email&fields[posts]=title&relations=posts
+```
+
+> Field selection and relation filtering still apply — only the query execution is bypassed.
+
+---
+
+### GET `/api/weather/current` — DTO Resource
+
+Demonstrates `ApiFieldResolver` with a DTO-backed resource. No database table is involved: the data is built from a hardcoded `WeatherDto` instance, simulating an external source (API call, cache, computed result, etc.).
+
+The `ApiFieldResolver` class handles field resolution and `FieldRegistry` registration without requiring an Eloquent model, enabling `WeatherDtoResource` to filter the response to only the requested fields.
+
+**Available fields:** `location`, `condition`, `temperature_c`, `temperature_f`, `humidity`, `wind_kph`, `wind_direction`, `recorded_at`  
+**Default fields:** `location`, `condition`, `temperature_c`, `humidity`, `recorded_at`
+
+```
+# Default fields
+GET /api/weather/current
+
+# Specific fields
+GET /api/weather/current?fields[weather]=location,condition,temperature_c,temperature_f
+
+# All fields
+GET /api/weather/current?fields[weather]=location,condition,temperature_c,temperature_f,humidity,wind_kph,wind_direction,recorded_at
+```
+
+**Default response (no `fields` parameter):**
+```json
+{
+    "data": {
+        "location": "Brussels, Belgium",
+        "condition": "Partly cloudy",
+        "temperature_c": 14.2,
+        "humidity": 72,
+        "recorded_at": "2026-02-24T10:00:00.000000Z"
+    }
+}
+```
+
+**Response with `?fields[weather]=location,temperature_c,temperature_f,wind_kph,wind_direction`:**
+```json
+{
+    "data": {
+        "location": "Brussels, Belgium",
+        "temperature_c": 14.2,
+        "temperature_f": 57.6,
+        "wind_kph": 18.5,
+        "wind_direction": "SW"
+    }
+}
+```
+
+**Relevant files:**
+- `app/DTOs/WeatherDto.php` — the DTO, implements `ApiResourceable`
+- `app/Http/Resources/WeatherDtoResource.php` — extends `ApiDtoResource`
+- `routes/api.php` — the `/weather/current` route
+
+---
+
+## Customizing the demo
+
+The routes are defined in:
+
+```
+demo/routes/api.php
+```
+
+You can freely modify or extend this file to experiment with:
+
+- Custom endpoints
+- Different models and relationships
+- Field selection, filtering, sorting, and nested relations
+- DTO-backed resources with `ApiFieldResolver`
+
+> The `demo/` folder is for local use only and should not be shipped to production.
