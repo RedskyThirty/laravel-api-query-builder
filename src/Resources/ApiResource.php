@@ -35,6 +35,26 @@ abstract class ApiResource extends JsonResource {
 	abstract protected function data(): array;
 	
 	/**
+	 * Resolves the table or resource name used for FieldRegistry lookups.
+	 * Override this method in subclasses to support non-Eloquent resources (e.g. DTOs).
+	 *
+	 * @return string
+	 */
+	protected function resolveTable(): string {
+		return $this->resource->getTable();
+	}
+	
+	/**
+	 * Resolves the raw attributes of the underlying resource.
+	 * Override this method in subclasses to support non-Eloquent resources (e.g. DTOs).
+	 *
+	 * @return array<string, mixed>
+	 */
+	protected function resolveAttributes(): array {
+		return $this->resource->getAttributes();
+	}
+	
+	/**
 	 * Builds the final API response array by including only the requested fields.
 	 *
 	 * If no fields have been registered in FieldRegistry for this model,
@@ -49,7 +69,7 @@ abstract class ApiResource extends JsonResource {
 		// Get the list of fields requested for this resource's table
 		
 		$fieldRegistry = app(FieldRegistry::class);
-		$resourceTable = $this->resource->getTable();
+		$resourceTable = $this->resolveTable();
 		$requestedFields = $fieldRegistry->getFieldsFor($resourceTable);
 		
 		// Fallback to default fields if none were explicitly requested
@@ -71,7 +91,7 @@ abstract class ApiResource extends JsonResource {
 			}
 		}
 		
-		$resourceAttributes = $this->resource->getAttributes(); // Raw model attributes
+		$resourceAttributes = $this->resolveAttributes(); // Raw resource attributes
 		$data = $this->data(); // Extended resource data defined by subclass
 		
 		// Append computed fields (like accessors) not already in attributes or base data
