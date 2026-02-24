@@ -3,7 +3,8 @@
 A lightweight and composable query builder for Laravel APIs, inspired by GraphQL flexibility.  
 Select only the fields and relations you want. Filter, sort, paginate — cleanly.
 
-Current version: 1.2.1
+**Current version:** 1.2.1<br>
+**Last update:** February 24, 2026
 
 ---
 
@@ -27,6 +28,9 @@ Current version: 1.2.1
     - [Syntax Variants](#syntax-variants)
     - [Wildcard Mode](#wildcard-mode)
 - [Resource example](#resource-example)
+- [DTO-backed Resources](#dto-backed-resources)
+    - [When you own the DTO](#when-you-own-the-dto)
+    - [When you don't own the DTO](#when-you-dont-own-the-dto)
 - [Nested Relation Helpers](#nested-relation-helpers)
     - [Usage](#usage)
     - [Behavior](#behavior)
@@ -313,6 +317,124 @@ class UserResource extends ApiResource {
         ];
     }
 }
+```
+
+## DTO-backed Resources
+
+By default, `ApiResource` expects an Eloquent model as its underlying resource. However, it is possible to back a resource with a DTO instead, while still benefiting from the full field-filtering logic provided by `ApiResource`.
+
+To support this, the package provides the `ApiDtoResource` abstract class and the `ApiResourceable` contract.
+
+### When you own the DTO
+
+If you have full control over the DTO class, implement the `ApiResourceable` interface on it. This requires two methods: `getTable()`, which returns the table or registry key used for field lookups, and `getAttributes()`, which returns the raw attributes as a key/value array.
+
+```php
+use RedskyEnvision\ApiQueryBuilder\Contracts\ApiResourceable;
+
+class UserData implements ApiResourceable
+{
+    public function __construct(
+        public readonly int    $id,
+        public readonly string $name,
+        public readonly string $email,
+    ) {}
+
+    public function getTable(): string
+    {
+        return 'users';
+    }
+
+    public function getAttributes(): array
+    {
+        return [
+            'id'    => $this->id,
+            'name'  => $this->name,
+            'email' => $this->email
+        ];
+    }
+}
+```
+
+Then extend `ApiDtoResource` instead of `ApiResource` in your resource class:
+
+```php
+use RedskyEnvision\ApiQueryBuilder\Resources\ApiDtoResource;
+
+class UserResource extends ApiDtoResource
+{
+    protected function defaultFields(): array
+    {
+        return ['id', 'name', 'email'];
+    }
+
+    protected function data(): array
+    {
+        return [
+            'id'    => $this->dto()->id,
+            'name'  => $this->dto()->name,
+            'email' => $this->dto()->email
+        ];
+    }
+}
+```
+
+The `dto()` helper method is provided by `ApiDtoResource` and returns `$this->resource` typed as `ApiResourceable`. Usage remains identical to a model-backed resource:
+
+```php
+UserResource::make($dto);
+UserResource::collection($dtos);
+```
+
+### When you don't own the DTO
+
+If the DTO comes from a third-party library and you cannot make it implement `ApiResourceable`, override `resolveTable()` and `resolveAttributes()` directly in the resource class. No adapter or intermediate class is needed.
+
+```php
+use RedskyEnvision\ApiQueryBuilder\Resources\ApiDtoResource;
+
+class UserResource extends ApiDtoResource
+{
+    protected function resolveTable(): string
+    {
+        return 'users';
+    }
+
+    protected function resolveAttributes(): array
+    {
+        /** @var ThirdPartyUserData $dto */
+        $dto = $this->resource;
+
+        return [
+            'id'    => $dto->id,
+            'name'  => $dto->name,
+            'email' => $dto->email,
+        ];
+    }
+
+    protected function defaultFields(): array
+    {
+        return ['id', 'name', 'email'];
+    }
+
+    protected function data(): array
+    {
+        /** @var ThirdPartyUserData $dto */
+        $dto = $this->resource;
+
+        return [
+            'id'    => $dto->id,
+            'name'  => $dto->name,
+            'email' => $dto->email,
+        ];
+    }
+}
+```
+
+Usage is unchanged:
+
+```php
+UserResource::make($thirdPartyDto);
 ```
 
 ## Nested Relation Helpers
