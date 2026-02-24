@@ -2,12 +2,11 @@
 
 namespace RedskyEnvision\ApiQueryBuilder;
 
-use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidFieldException;
+use RedskyEnvision\ApiQueryBuilder\Concerns\ResolvesFields;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidFilterException;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidRelationException;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidScopeException;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidSortException;
-use RedskyEnvision\ApiQueryBuilder\Registries\FieldRegistry;
 use RedskyEnvision\ApiQueryBuilder\Sorts\Sort;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -16,7 +15,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
-use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
@@ -32,6 +30,8 @@ use LogicException;
  * @package RedskyEnvision\ApiQueryBuilder
  */
 class ApiQueryBuilder {
+	use ResolvesFields;
+	
 	/**
 	 * @var string Filter type for LIKE queries
 	 */
@@ -40,15 +40,6 @@ class ApiQueryBuilder {
 	 * @var string Filter type for standard WHERE queries
 	 */
 	private const string FILTER_TYPE_WHERE = 'where';
-	
-	/**
-	 * @var string Separator used in URI for AND conditions
-	 */
-	private const string URI_SEPARATOR_AND = ',';
-	/**
-	 * @var string Separator used in URI for OR conditions
-	 */
-	private const string URI_SEPARATOR_OR = '|';
 	
 	/**
 	 * @var string NOT operator prefix
@@ -91,15 +82,17 @@ class ApiQueryBuilder {
 	 */
 	private array $allowedScopes = [];
 	
-	/**
-	 * @var array<string, string[]> | string[] List of allowed fields per table or global
-	 */
-	private array $allowedFields = ['*'];
+	// Declared inside "ResolvesFields" trait
+	// /**
+	//  * @var array<string, string[]>|string[] List of allowed fields per table or global wildcard
+	//  */
+	// private array $allowedFields = ['*'];
 	
-	/**
-	 * @var array<string, string[]> List of fields that must always be selected per table
-	 */
-	private array $alwaysFields = [];
+	// Declared inside "ResolvesFields" trait
+	// /**
+	//  * @var array<string, string[]> List of fields that must always be selected, keyed by table name
+	//  */
+	// private array $alwaysFields = [];
 	
 	/**
 	 * @var string[] List of allowed filter fields
@@ -131,10 +124,6 @@ class ApiQueryBuilder {
 	 */
 	private bool $hasBeenPrepared = false;
 	
-	/**
-	 * @var bool Whether to throw exceptions when something invalid is provided
-	 */
-	private bool $strictMode = true;
 	
 	/**
 	 * ApiQueryBuilder constructor
@@ -205,29 +194,6 @@ class ApiQueryBuilder {
 	}
 	
 	/**
-	 * @param array<string, string[]> | string[] $fields Value can be ['*'] or ['table' => ['*']] or ['table' => ['field1', 'field2']]
-	 * @return $this
-	 */
-	public function allowedFields(array $fields): self {
-		$this->allowedFields = $fields;
-		
-		$this->storeAllowedFields();
-		
-		return $this;
-	}
-	
-	/**
-	 * Sets always-included fields per table (e.g. for internal checks).
-	 *
-	 * @param array<string, string[]> $fields Value must be ['table' => ['field1', 'field2']]
-	 * @return $this
-	 */
-	public function alwaysFields(array $fields): self {
-		$this->alwaysFields = $fields;
-		return $this;
-	}
-	
-	/**
 	 * @param string[] $fields Value can be ['*'] or ['column'] or ['relation.*'] or ['relation.column']
 	 * @return $this
 	 */
@@ -273,16 +239,6 @@ class ApiQueryBuilder {
 	 */
 	public function maxPerPage(int $count): self {
 		$this->maxPerPage = $count;
-		
-		return $this;
-	}
-	
-	/**
-	 * @param bool $value
-	 * @return $this
-	 */
-	public function strictMode(bool $value): self {
-		$this->strictMode = $value;
 		
 		return $this;
 	}
@@ -726,29 +682,6 @@ class ApiQueryBuilder {
 	}
 	
 	/**
-	 * Store allowed fields in FieldRegistry
-	 *
-	 * @return void
-	 */
-	private function storeAllowedFields(): void {
-		// Determine whether allowedFields is an associative array (per table)
-		
-		$isAssoc = Arr::isAssoc($this->allowedFields);
-		
-		// Check if wildcard is present (global)
-		
-		$isAllowingAll = !$isAssoc && count($this->allowedFields) === 1 && $this->allowedFields[0] === '*';
-		
-		if (!$isAllowingAll && $isAssoc) {
-			$fieldRegistry = app(FieldRegistry::class);
-			
-			foreach ($this->allowedFields as $table => $field) {
-				$fieldRegistry->setAllowedFieldsFor($table, $field);
-			}
-		}
-	}
-	
-	/**
 	 * @return string[]
 	 */
 	private function explodeRequestedRelations(): array {
@@ -866,102 +799,6 @@ class ApiQueryBuilder {
 	}
 	
 	/**
-	 * Parses a comma-separated list of requested fields from the HTTP request for a given table.
-	 *
-	 * The method also filters out unauthorized fields (if applicable) and stores
-	 * the result in the FieldRegistry for later use in the resource layer.
-	 *
-	 * @param Request $request
-	 * @param string $tableName
-	 * @return string[]
-	 */
-	private function parseFields(Request $request, string $tableName): array {
-		$fields = $request->input('fields.'.$tableName, '');
-		$fields = array_filter(array_map('trim', explode(self::URI_SEPARATOR_AND, $fields)));
-		
-		if (!empty($fields)) {
-			// Filter out disallowed fields according to allowedFields()
-			
-			$fields = $this->filterFields($tableName, $fields);
-		} else {
-			$fields = ['*'];
-		}
-		
-		$fieldRegistry = app(FieldRegistry::class);
-		
-		// Append "alwaysFields" if set and current selection is not wildcard
-		
-		if ($fields !== ['*'] && array_key_exists($tableName, $this->alwaysFields)) {
-			$fields = array_unique(array_merge($fields, $this->alwaysFields[$tableName]));
-			
-			// Store the fields in FieldRegistry
-			
-			$fieldRegistry->setAlwaysFieldsFor($tableName, $this->alwaysFields[$tableName]);
-		}
-		
-		// Store the result in FieldRegistry for use in resources (e.g., ApiResource)
-		
-		$fieldRegistry->setFieldsFor($tableName, $fields);
-		
-		return $fields;
-	}
-	
-	/**
-	 * Filters a list of requested fields by checking them against the allowed fields.
-	 *
-	 * In strict mode, an exception is thrown if any unauthorized field is found.
-	 * In non-strict mode, unauthorized fields are silently removed.
-	 *
-	 * @param string $tableName
-	 * @param array $fields
-	 * @return string[]
-	 */
-	private function filterFields(string $tableName, array $fields): array {
-		// Determine whether allowedFields is an associative array (per table)
-		
-		$isAllowedAssoc = Arr::isAssoc($this->allowedFields);
-		
-		// Allow all fields if wildcard is present (global or per-table)
-		
-		if (
-			(!$isAllowedAssoc && count($this->allowedFields) === 1 && $this->allowedFields[0] === '*') ||
-			($isAllowedAssoc && array_key_exists($tableName, $this->allowedFields) && count($this->allowedFields[$tableName]) === 1 && $this->allowedFields[$tableName][0] === '*')
-		) {
-			return $fields;
-		}
-		
-		// If no fields are allowed for this table, return an empty list
-		
-		if ($isAllowedAssoc && !array_key_exists($tableName, $this->allowedFields)) {
-			return [];
-		}
-		
-		// Get allowed fields, either global or specific to the table
-		
-		$allowedFields = $isAllowedAssoc ? $this->allowedFields[$tableName] : $this->allowedFields;
-		
-		// Remove disallowed fields or throw an exception if strict mode is enabled
-		
-		for ($i = 0; $i < count($fields); $i++) {
-			$field = $fields[$i];
-			
-			if (in_array($field, $allowedFields, true)) {
-				continue;
-			}
-			
-			if ($this->strictMode) {
-				throw new InvalidFieldException('Field "'.$field.'" is not allowed.');
-			}
-			
-			array_splice($fields, $i, 1);
-			
-			$i--;
-		}
-		
-		return $fields;
-	}
-	
-	/**
 	 * Filters the requested fields to only include those that exist in the database schema.
 	 * Then applies them to the query as a select clause, fully qualified with table name.
 	 *
@@ -984,22 +821,6 @@ class ApiQueryBuilder {
 		}
 		
 		$selectableFields = null;
-	}
-	
-	/**
-	 * Returns the requested fields for a single table (raw parsing only).
-	 *
-	 * @param string $tableName
-	 * @return string[]
-	 */
-	private function explodeRequestedFieldsForTable(string $tableName): array {
-		$raw = (string)$this->request->input('fields.'.$tableName, '');
-		
-		if ($raw === '') {
-			return [];
-		}
-		
-		return array_values(array_filter(array_map('trim', explode(self::URI_SEPARATOR_AND, $raw))));
 	}
 	
 	/**

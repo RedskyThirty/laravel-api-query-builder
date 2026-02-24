@@ -32,6 +32,11 @@ Select only the fields and relations you want. Filter, sort, paginate — cleanl
     - [When you own the DTO](#when-you-own-the-dto)
     - [When you don't own the DTO](#when-you-dont-own-the-dto)
     - [Accessing the DTO in data()](#accessing-the-dto-in-data)
+- [Field Resolution Without a Query (ApiFieldResolver)](#field-resolution-without-a-query-apifieldresolver)
+    - [Basic Usage](#basic-usage-1)
+    - [alwaysFields Support](#alwaysfields-support)
+    - [Strict Mode](#strict-mode)
+    - [Inspecting Resolved Fields](#inspecting-resolved-fields)
 - [Nested Relation Helpers](#nested-relation-helpers)
     - [Usage](#usage)
     - [Behavior](#behavior)
@@ -493,6 +498,87 @@ class UserResource extends ApiDtoResource
 
 > **Note:** `@mixin` is recognized by PhpStorm and similar IDEs but is ignored by PHPStan and Psalm. If you rely on static analysis, prefer `dto()` for accurate type inference.
 
+## Field Resolution Without a Query (ApiFieldResolver)
+
+When working with DTO-backed resources, there is no Eloquent model and no database query to execute. `ApiQueryBuilder` cannot be used in this context because it requires a model class. `ApiFieldResolver` fills this gap: it provides the same field resolution and `FieldRegistry` registration logic, without any query building or Eloquent dependency.
+
+### Basic Usage
+
+Instantiate `ApiFieldResolver` in your controller before returning the resource. The `prepare()` call parses the `fields[...]` parameters from the request, filters them against `allowedFields`, and registers the result in `FieldRegistry` so that the resource can apply field filtering automatically.
+
+```php
+use App\DTOs\UserDto;
+use App\Http\Resources\UserDtoResource;
+use RedskyEnvision\ApiQueryBuilder\ApiFieldResolver;
+
+class UserController extends Controller
+{
+    public function show(Request $request, int $id): UserDtoResource
+    {
+        $dto = new UserDto(
+            id: $id,
+            email: 'john@example.com',
+            name: 'John',
+            createdAt: now()
+        );
+
+        ApiFieldResolver::make($request)
+            ->allowedFields([
+                'users' => ['id', 'email', 'name', 'created_at']
+            ])
+            ->prepare('users');
+
+        return UserDtoResource::make($dto);
+    }
+}
+```
+
+With `?fields[users]=id,email`, the response will only contain `id` and `email`.  
+Without any `fields` parameter, the resource falls back to its `defaultFields()`.
+
+### alwaysFields Support
+
+`ApiFieldResolver` supports `alwaysFields()` with the same semantics as `ApiQueryBuilder`: the specified fields are injected unconditionally into any non-wildcard selection.
+
+```php
+ApiFieldResolver::make($request)
+    ->allowedFields([
+        'users' => ['id', 'email', 'name', 'created_at']
+    ])
+    ->alwaysFields([
+        'users' => ['id']
+    ])
+    ->prepare('users');
+```
+
+### Strict Mode
+
+By default, strict mode is enabled: requesting a field not listed in `allowedFields` throws an `InvalidFieldException`. Pass `false` as the second argument to `make()` to silently drop disallowed fields instead.
+
+```php
+ApiFieldResolver::make($request, strict: false)
+    ->allowedFields([
+        'users' => ['id', 'email', 'name']
+    ])
+    ->prepare('users');
+```
+
+### Inspecting Resolved Fields
+
+After calling `prepare()`, you can query the resolved field list directly on the resolver instance if needed.
+
+```php
+$resolver = ApiFieldResolver::make($request)
+    ->allowedFields(['users' => ['id', 'email', 'name', 'created_at']])
+    ->prepare('users');
+
+// Returns the filtered field list, e.g. ['id', 'email']
+$fields = $resolver->getRequestedFieldsFor('users');
+
+// Returns true if 'email' is in the resolved list (or if wildcard is active)
+$hasEmail = $resolver->hasRequestedField('users', 'email');
+```
+
 ## Nested Relation Helpers
 
 Sometimes you may want to include data in a **Resource** only if a **nested relation** has been loaded.  
@@ -698,13 +784,10 @@ All URL parameters related to **field selection** demonstrated above can also be
 
 This works especially well when using the `prepareWithoutQuery()` method, which allows parsing and validation of requested fields and relations **without performing any database query**. This ensures consistent response shaping even when loading a single resource outside of the query builder's automatic mode.
 
-
-All URL examples provided above are fully replicable with the **Single Resource** usage (e.g. via `/api/users/{id}`).
+All URL examples provided above are fully replicable with the **Single Resource** usage (e.g. via `/api/users/{id}`).  
 This ensures a consistent API experience whether you're fetching a list of resources or a single one.
 
-In contrast, when using the `prepareWithoutQuery()` method (query-less mode), **only field selection logic** (i.e. the `fields[...]` parameters) is parsed and validated. This is useful for shaping responses or metadata without performing any database access, but it does not apply filters, sorting, or relation loading.
-
-In contrast, when using the `prepareWithoutQuery()` method (query-less mode), **only field selection logic** (i.e. the `fields[...]` parameters) is parsed and validated. This is useful for shaping responses or metadata without performing any database access — such as in the demo endpoints `/api/users/random` — but it does not apply filters, sorting, or relation loading.
+When using the `prepareWithoutQuery()` method (query-less mode), **only field selection logic** (i.e. the `fields[...]` parameters) is parsed and validated. This is useful for shaping responses or metadata without performing any database access — such as in the demo endpoints `/api/users/random` — but it does not apply filters, sorting, or relation loading.
 
 
 ## Requirements

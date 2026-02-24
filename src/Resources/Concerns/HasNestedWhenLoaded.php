@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * Trait HasNestedWhenLoaded
  *
+ * @mixin \RedskyEnvision\ApiQueryBuilder\Resources\ApiResource
  * @package RedskyEnvision\ApiQueryBuilder\Resources\Concerns
  */
 trait HasNestedWhenLoaded {

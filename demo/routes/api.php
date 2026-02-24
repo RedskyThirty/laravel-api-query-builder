@@ -1,9 +1,13 @@
 <?php
 
+use App\DTOs\WeatherDto;
 use App\Http\Resources\UserResource;
+use App\Http\Resources\WeatherDtoResource;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Route;
+use RedskyEnvision\ApiQueryBuilder\ApiFieldResolver;
 use RedskyEnvision\ApiQueryBuilder\ApiQueryBuilder;
 use RedskyEnvision\ApiQueryBuilder\Resources\NotFoundResource;
 use RedskyEnvision\ApiQueryBuilder\Sorts\Sort;
@@ -68,4 +72,30 @@ Route::get('/users/random', function (Request $request) {
 		->prepareWithoutQuery();
 
 	return UserResource::make($user);
+});
+
+// DTO Resource (ApiFieldResolver)
+
+Route::get('/weather/current', function (Request $request) {
+	// Simulates a DTO built from an external source (API call, cache, computed data, etc.)
+	// No database table involved — demonstrates ApiFieldResolver with a DTO-backed resource.
+
+	$dto = new WeatherDto(
+		location: 'Brussels, Belgium',
+		condition: 'Partly cloudy',
+		temperature_c: 14.2,
+		temperature_f: 57.6,
+		humidity: 72,
+		wind_kph: 18.5,
+		wind_direction: 'SW',
+		recorded_at: Carbon::now()
+	);
+
+	ApiFieldResolver::make($request)
+		->allowedFields([
+			'weather' => ['location', 'condition', 'temperature_c', 'temperature_f', 'humidity', 'wind_kph', 'wind_direction', 'recorded_at']
+		])
+		->prepare('weather');
+
+	return WeatherDtoResource::make($dto);
 });
