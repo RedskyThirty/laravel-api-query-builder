@@ -31,6 +31,7 @@ Select only the fields and relations you want. Filter, sort, paginate — cleanl
 - [DTO-backed Resources](#dto-backed-resources)
     - [When you own the DTO](#when-you-own-the-dto)
     - [When you don't own the DTO](#when-you-dont-own-the-dto)
+    - [Accessing the DTO in data()](#accessing-the-dto-in-data)
 - [Nested Relation Helpers](#nested-relation-helpers)
     - [Usage](#usage)
     - [Behavior](#behavior)
@@ -356,6 +357,15 @@ class UserData implements ApiResourceable
 }
 ```
 
+If your DTO already exposes a `toArray()` method that matches the structure you want to expose, you can use it directly in `getAttributes()` instead of listing every property manually:
+
+```php
+public function getAttributes(): array
+{
+    return $this->toArray();
+}
+```
+
 Then extend `ApiDtoResource` instead of `ApiResource` in your resource class:
 
 ```php
@@ -379,7 +389,7 @@ class UserResource extends ApiDtoResource
 }
 ```
 
-The `dto()` helper method is provided by `ApiDtoResource` and returns `$this->resource` typed as `ApiResourceable`. Usage remains identical to a model-backed resource:
+Usage remains identical to a model-backed resource:
 
 ```php
 UserResource::make($dto);
@@ -389,6 +399,8 @@ UserResource::collection($dtos);
 ### When you don't own the DTO
 
 If the DTO comes from a third-party library and you cannot make it implement `ApiResourceable`, override `resolveTable()` and `resolveAttributes()` directly in the resource class. No adapter or intermediate class is needed.
+
+If the DTO exposes a `toArray()` method that fits your needs, you can use it directly in `resolveAttributes()`:
 
 ```php
 use RedskyEnvision\ApiQueryBuilder\Resources\ApiDtoResource;
@@ -405,11 +417,7 @@ class UserResource extends ApiDtoResource
         /** @var ThirdPartyUserData $dto */
         $dto = $this->resource;
 
-        return [
-            'id'    => $dto->id,
-            'name'  => $dto->name,
-            'email' => $dto->email,
-        ];
+        return $dto->toArray();
     }
 
     protected function defaultFields(): array
@@ -431,11 +439,59 @@ class UserResource extends ApiDtoResource
 }
 ```
 
+Otherwise, list the properties manually:
+
+```php
+protected function resolveAttributes(): array
+{
+    /** @var ThirdPartyUserData $dto */
+    $dto = $this->resource;
+
+    return [
+        'id'    => $dto->id,
+        'name'  => $dto->name,
+        'email' => $dto->email,
+    ];
+}
+```
+
 Usage is unchanged:
 
 ```php
 UserResource::make($thirdPartyDto);
 ```
+
+### Accessing the DTO in data()
+
+`ApiDtoResource` provides a `dto()` helper that returns `$this->resource` typed as `ApiResourceable`. This gives static analysis tools (PHPStan, Psalm) accurate type information, which `$this->resource` alone — declared as `mixed` in `JsonResource` — cannot provide.
+
+```php
+protected function data(): array
+{
+    return [
+        'id'   => $this->dto()->id,
+        'name' => $this->dto()->name,
+    ];
+}
+```
+
+If you prefer accessing DTO properties directly via `$this->property` without calling `dto()`, you can add a `@mixin` annotation on the resource class. This is purely an IDE hint and has no effect on static analysis tools:
+
+```php
+/** @mixin UserData */
+class UserResource extends ApiDtoResource
+{
+    protected function data(): array
+    {
+        return [
+            'id'   => $this->id,    // IDE-friendly, no dto() call needed
+            'name' => $this->name,
+        ];
+    }
+}
+```
+
+> **Note:** `@mixin` is recognized by PhpStorm and similar IDEs but is ignored by PHPStan and Psalm. If you rely on static analysis, prefer `dto()` for accurate type inference.
 
 ## Nested Relation Helpers
 
