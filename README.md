@@ -4,7 +4,7 @@ A lightweight and composable query builder for Laravel APIs, inspired by GraphQL
 Select only the fields and relations you want. Filter, sort, paginate — cleanly.
 
 **Current version:** 1.3.0<br>
-**Last update:** February 24, 2026
+**Last update:** March 13, 2026
 
 ---
 
@@ -27,6 +27,7 @@ Select only the fields and relations you want. Filter, sort, paginate — cleanl
     - [Whitelisting Allowed Scopes](#whitelisting-allowed-scopes)
     - [Syntax Variants](#syntax-variants)
     - [Wildcard Mode](#wildcard-mode)
+- [Custom Filters](#custom-filters)
 - [Resource example](#resource-example)
 - [DTO-backed Resources](#dto-backed-resources)
     - [When you own the DTO](#when-you-own-the-dto)
@@ -55,6 +56,7 @@ Select only the fields and relations you want. Filter, sort, paginate — cleanl
 - ✅ Dynamic field selection (`fields[users]=name,email`)
 - ✅ Relation loading with nested control (`relations=posts.comments`)
 - ✅ Filtering (`where[status]=active`)
+- ✅ Custom filters for virtual or computed attributes (`customFilters()`)
 - ✅ Logical AND / OR filtering (`where[name]=john|doe`)
 - ✅ Sorting (`orderby=-created_at`)
 - ✅ Strict mode for validation
@@ -303,6 +305,52 @@ To allow **all** local scopes to be accessible (not recommended in public APIs):
 ```php
 ->allowedScopes(['*'])
 ```
+
+## Custom Filters
+
+Sometimes a filterable attribute does not map to a real database column — for example, a computed field, a cross-table search, or any condition that cannot be expressed as a simple `where[column]=value`.
+
+The `customFilters()` method lets you register a closure for any such field. The closure receives the query builder, the raw value from the request, and the filter type (`'where'` or `'like'`), giving you full control over how the condition is applied.
+
+A common use case is a **unified search parameter** that matches across multiple columns or related tables in a single filter:
+
+```php
+use Illuminate\Database\Eloquent\Builder;
+
+$results = ApiQueryBuilder::make(User::class, $request)
+    ->allowedRelations(['profile'])
+    ->allowedFilters(['search'])
+    ->customFilters([
+        'search' => function (Builder $builder, string $value, string $type): void {
+            $operator  = $type === 'like' ? 'like' : '=';
+            $formatted = $type === 'like' ? '%'.$value.'%' : $value;
+
+            $builder->where(function (Builder $q) use ($operator, $formatted): void {
+                $q->where('users.email', $operator, $formatted)
+                  ->orWhereHas('profile', function (Builder $q) use ($operator, $formatted): void {
+                      $q->whereRaw("CONCAT(firstname, ' ', lastname) $operator ?", [$formatted]);
+                  });
+            });
+        },
+    ])
+    ->prepare()
+    ->fetch();
+```
+
+```
+# Exact match across email and full name
+GET /api/users?where[search]=john
+
+# Partial match across email and full name
+GET /api/users?like[search]=john
+```
+
+#### Notes
+
+- The filter name **must also appear in `allowedFilters()`** to be reachable.
+- Custom filters only apply to the **root model**. They cannot be used inside nested relation paths (e.g. `where[relation.virtual_field]`).
+- Operator parsing (`gt:`, `lte:`, `!`, etc.) is **not applied automatically** — the closure receives the raw value as typed in the request. Handle any parsing you need inside the closure itself.
+- The `$type` parameter reflects which URL key was used: `'where'` for `where[field]=...` and `'like'` for `like[field]=...`.
 
 ## Resource example
 
