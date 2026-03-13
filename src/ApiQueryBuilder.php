@@ -213,13 +213,14 @@ class ApiQueryBuilder {
 	/**
 	 * Registers custom filter closures keyed by filter name.
 	 *
-	 * Each closure receives the Builder and the raw string value from the request.
-	 * Custom filters bypass schema checks and standard operator parsing, making them
-	 * suitable for virtual columns, joined fields, or subquery-based attributes.
+	 * Each closure receives the Builder, the raw string value from the request,
+	 * and the filter type ('like' or 'where'). Custom filters bypass schema checks
+	 * and standard operator parsing, making them suitable for virtual columns,
+	 * joined fields, or subquery-based attributes.
 	 *
 	 * The filter name must also appear in allowedFilters() to be reachable.
 	 *
-	 * @param array<string, Closure> $filters
+	 * @param array<string, Closure(Builder, string, string): void> $filters
 	 * @return $this
 	 */
 	public function customFilters(array $filters): self {
@@ -1113,7 +1114,7 @@ class ApiQueryBuilder {
 				// Custom filters bypass schema checks and operator parsing entirely.
 				
 				if (isset($this->customFilters[$field]) && $relationPath === null) {
-					($this->customFilters[$field])($builder, $value);
+					($this->customFilters[$field])($builder, $value, $type);
 					
 					$field = null;
 					
