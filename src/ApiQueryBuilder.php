@@ -3,6 +3,7 @@
 namespace RedskyEnvision\ApiQueryBuilder;
 
 use Closure;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use RedskyEnvision\ApiQueryBuilder\Concerns\ResolvesFields;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidFilterException;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidRelationException;
@@ -491,7 +492,13 @@ class ApiQueryBuilder {
 				
 				$fields = $this->parseFields($this->request, $relatedTable);
 				
-				if (!$this->isSelectingAll($fields)) {
+				/*
+				 * MorphTo relations resolve their actual table at runtime (one query per morph type).
+				 * Applying a static select with the default related table name would produce invalid SQL (e.g. SELECT comments.* FROM posts).
+				 * Skip field selection entirely.
+				 */
+				
+				if (!$this->isSelectingAll($fields) && !($rootRelation instanceof MorphTo)) {
 					$this->prepareRelationSelect($q, $rootRelation, $relatedTable, $fields);
 				}
 				
@@ -645,14 +652,14 @@ class ApiQueryBuilder {
 	 * @param Builder|Relation $builder The current query or relation builder
 	 * @param string[] $relationSegments The segments of the relation path
 	 * @param string $prefix Used to rebuild full relation path recursively
-	 * @param null $model The current model being evaluated (used for recursion)
+	 * @param Model|null $model The current model being evaluated (used for recursion)
 	 * @return void
 	 */
 	private function applyNestedWith(
 		Builder | Relation $builder,
 		array $relationSegments,
 		string $prefix = '',
-		$model = null
+		?Model $model = null
 	): void {
 		$relationName = array_shift($relationSegments);
 		$fullRelationKey = $prefix ? $prefix.'.'.$relationName : $relationName;
@@ -689,7 +696,9 @@ class ApiQueryBuilder {
 		$builder->with([$relationName => function ($q) use ($relationSegments, $fullRelationKey, $relatedModel, $relationInstance, $relatedTable) {
 			$fields = $this->parseFields($this->request, $relatedTable);
 			
-			if (!$this->isSelectingAll($fields)) {
+			// Same guard as in "prepare()": "MorphTo" relations must not receive a static field selection.
+			
+			if (!$this->isSelectingAll($fields) && !($relationInstance instanceof MorphTo)) {
 				$this->prepareRelationSelect($q, $relationInstance, $relatedTable, $fields);
 			}
 			
