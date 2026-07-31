@@ -4,6 +4,7 @@ use App\DTOs\WeatherDto;
 use App\Http\Resources\UserResource;
 use App\Http\Resources\WeatherDtoResource;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Route;
@@ -25,7 +26,30 @@ Route::get('/users', function (Request $request) {
 			'posts' => ['title', 'excerpt', 'created_at', 'comments'],
 			'comments' => ['username', 'message', 'created_at']
 		])
-		->allowedFilters(['name', 'email', 'addresses.*', 'created_at', 'profile.firstname', 'profile.lastname', 'posts.comments.username'])
+		->allowedFilters(['name', 'email', 'addresses.*', 'created_at', 'profile.firstname', 'profile.lastname', 'posts.comments.username', 'search'])
+		->customFilters([
+			// Unified search across the user's email and profile name
+			'search' => function (Builder $builder, string $value, string $type): void {
+				$operator = $type === 'like' ? 'like' : '=';
+				$formatted = $type === 'like' ? '%'.$value.'%' : $value;
+
+				$builder->where(function (Builder $q) use ($operator, $formatted): void {
+					$q->where('email', $operator, $formatted)
+						->orWhereHas('profile', function (Builder $q) use ($operator, $formatted): void {
+							$q->where('firstname', $operator, $formatted)
+								->orWhere('lastname', $operator, $formatted);
+						});
+				});
+			}
+		])
+		->customSorts([
+			// Verified users first (or last in "desc"), tie-broken by creation date
+			'verification_priority' => function (Builder $builder, string $direction): void {
+				$builder
+					->orderByRaw('(email_verified_at IS NULL) '.($direction === 'desc' ? 'DESC' : 'ASC'))
+					->orderBy('created_at', $direction);
+			}
+		])
 		->defaultSorts([Sort::make('created_at', 'desc')])
 		->prepare()
 		->fetch();

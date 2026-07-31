@@ -49,6 +49,26 @@ GET /api/users?per_page=10
 GET /api/users?scopes=unverified
 ```
 
+**Custom filter (`search`):** matches a value against the user's email and profile name (`firstname`/`lastname`) in a single filter, demonstrating `customFilters()`.
+
+```
+# Exact match across email, firstname and lastname
+GET /api/users?where[search]=john
+
+# Partial match across the same fields
+GET /api/users?like[search]=john
+```
+
+**Custom sort (`verification_priority`):** ranks verified users before unverified ones (or the reverse in descending order), tie-broken by `created_at`, demonstrating `customSorts()`.
+
+```
+# Verified users first, most recent first within each group
+GET /api/users?orderby=verification_priority
+
+# Unverified users first, most recent first within each group
+GET /api/users?orderby=-verification_priority
+```
+
 ---
 
 ### GET `/api/users/{id}` — Single Resource
@@ -70,10 +90,10 @@ Returns a randomly selected user with all relations pre-loaded, using `prepareWi
 
 ```
 GET /api/users/random
-GET /api/users/random?fields[users]=id,email&fields[posts]=title&relations=posts
+GET /api/users/random?fields[users]=id,email&fields[posts]=title
 ```
 
-> Field selection and relation filtering still apply — only the query execution is bypassed.
+> Only field selection (`fields[...]`) is applied. Relations are always eager-loaded in full beforehand (`profile`, `addresses`, `posts`, `posts.comments`) — `prepareWithoutQuery()` does not apply filters, sorting, or relation loading, so a `relations=...` parameter has no effect on this endpoint.
 
 ---
 
