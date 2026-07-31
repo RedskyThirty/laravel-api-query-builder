@@ -3,8 +3,8 @@
 A lightweight and composable query builder for Laravel APIs, inspired by GraphQL flexibility.  
 Select only the fields and relations you want. Filter, sort, paginate — cleanly.
 
-**Current version:** 1.4.2<br>
-**Last update:** April 27, 2026
+**Current version:** 1.5.0<br>
+**Last update:** July 31, 2026
 
 ---
 
@@ -18,23 +18,31 @@ Select only the fields and relations you want. Filter, sort, paginate — cleanl
     - [Usage Without Executing a Query](#usage-without-executing-a-query)
 - [Always Fields](#always-fields)
     - [Priority Rules](#-priority-rules)
-- [Sorting](#sorting)
+- [Filtering](#filtering)
     - [Basic Usage](#basic-usage)
+    - [Defining Allowed Filters](#defining-allowed-filters)
+    - [Operators](#operators)
+    - [Negation](#negation)
+    - [Logical AND / OR](#logical-and--or)
+    - [Filtering on Relations](#filtering-on-relations)
+    - [Custom Filters](#custom-filters)
+- [Sorting](#sorting)
+    - [Basic Usage](#basic-usage-1)
     - [Defining Allowed Sorts](#defining-allowed-sorts)
     - [Default Sorts](#default-sorts)
+    - [Custom Sorts](#custom-sorts)
 - [Local Scopes](#local-scopes)
-    - [Basic Usage](#basic-usage)
+    - [Basic Usage](#basic-usage-2)
     - [Whitelisting Allowed Scopes](#whitelisting-allowed-scopes)
     - [Syntax Variants](#syntax-variants)
     - [Wildcard Mode](#wildcard-mode)
-- [Custom Filters](#custom-filters)
 - [Resource example](#resource-example)
 - [DTO-backed Resources](#dto-backed-resources)
     - [When you own the DTO](#when-you-own-the-dto)
     - [When you don't own the DTO](#when-you-dont-own-the-dto)
     - [Accessing the DTO in data()](#accessing-the-dto-in-data)
 - [Field Resolution Without a Query (ApiFieldResolver)](#field-resolution-without-a-query-apifieldresolver)
-    - [Basic Usage](#basic-usage-1)
+    - [Basic Usage](#basic-usage-3)
     - [alwaysFields Support](#alwaysfields-support)
     - [Strict Mode](#strict-mode)
     - [Inspecting Resolved Fields](#inspecting-resolved-fields)
@@ -59,6 +67,7 @@ Select only the fields and relations you want. Filter, sort, paginate — cleanl
 - ✅ Custom filters for virtual or computed attributes (`customFilters()`)
 - ✅ Logical AND / OR filtering (`where[name]=john|doe`)
 - ✅ Sorting (`orderby=-created_at`)
+- ✅ Custom sorts for computed or virtual orderings (`customSorts()`)
 - ✅ Strict mode for validation
 
 ## Installation
@@ -195,6 +204,150 @@ These fields will be automatically merged into the requested or default field se
 - They are **injected unconditionally**
 - Useful for internal fields like foreign keys or polymorphic links
 
+## Filtering
+
+The `where` and `like` URL parameters allow you to dynamically filter your API results.
+
+### Basic Usage
+
+- `where[field]=value` matches an **exact** value (`=`).
+- `like[field]=value` matches a **partial** value — the query builder automatically wraps it as `%value%`.
+
+```
+# Exact match
+GET /api/users?where[email]=john@example.com
+
+# Partial match
+GET /api/users?like[email]=gmail
+```
+
+### Defining Allowed Filters
+
+To restrict which fields can be filtered, use the `allowedFilters()` method:
+
+```php
+$results = ApiQueryBuilder::make(User::class, $request)
+    ->allowedFilters(['name', 'email', 'created_at'])
+    ->prepare()
+    ->fetch();
+```
+
+If a request filters by a field not in the allowed list, the query builder will ignore it (or throw an `InvalidFilterException` if **strict mode** is enabled).
+
+Filters on relation fields can be whitelisted individually (`'profile.firstname'`) or with a wildcard covering every field on that relation:
+
+```php
+->allowedFilters(['name', 'addresses.*', 'profile.firstname'])
+```
+
+### Operators
+
+The following prefixes can be used with `where` to apply comparison operators. They are **not supported** with `like` (attempting to combine them throws an `InvalidFilterException` in strict mode).
+
+| Prefix | Operator |
+|--------|----------|
+| `gt:`  | `>`      |
+| `gte:` | `>=`     |
+| `lt:`  | `<`      |
+| `lte:` | `<=`     |
+
+```
+GET /api/users?where[created_at]=gte:2025-01-01%2000:00:00
+```
+
+### Negation
+
+Prefixing a value with `!` negates the condition. It works with both filter types:
+
+- `where[field]=!value` → `field != value`
+- `like[field]=!value` → `field NOT LIKE %value%`
+
+```
+GET /api/users?where[status]=!archived
+GET /api/users?like[email]=!gmail
+```
+
+> **Note:** Negation cannot be combined with a comparison operator (`!gt:...` is not supported) — a value is either negated or compared, not both.
+
+### Logical AND / OR
+
+Multiple values can be combined within a single filter using `|` for **OR** and `,` for **AND**:
+
+```
+# name = john OR name = jane
+GET /api/users?where[name]=john|jane
+
+# name != john AND name != jane
+GET /api/users?where[name]=!john,!jane
+```
+
+> **Note:** Mixing `|` and `,` within the same filter value is not allowed and throws an `InvalidFilterException` in strict mode. Use separate filters, or nested relation filters, to express more complex combinations.
+
+### Filtering on Relations
+
+Filters can also target fields on related models using dot notation, as long as the relation is listed in `allowedRelations()`:
+
+```php
+$results = ApiQueryBuilder::make(User::class, $request)
+    ->allowedRelations(['profile', 'posts', 'posts.comments'])
+    ->allowedFilters(['profile.firstname', 'posts.comments.username'])
+    ->prepare()
+    ->fetch();
+```
+
+```
+GET /api/users?where[profile.firstname]=john
+GET /api/users?where[posts.comments.username]=jane
+```
+
+Nested relation filters are resolved recursively (`whereHas()` under the hood), so any depth of relation chain is supported as long as each segment is allowed.
+
+### Custom Filters
+
+Sometimes a filterable attribute does not map to a real database column — for example, a computed field, a cross-table search, or any condition that cannot be expressed as a simple `where[column]=value`.
+
+The `customFilters()` method lets you register a closure for any such field. The closure receives the query builder, the raw value from the request, and the filter type (`'where'` or `'like'`), giving you full control over how the condition is applied.
+
+A common use case is a **unified search parameter** that matches across multiple columns or related tables in a single filter:
+
+```php
+use Illuminate\Database\Eloquent\Builder;
+
+$results = ApiQueryBuilder::make(User::class, $request)
+    ->allowedRelations(['profile'])
+    ->allowedFilters(['search'])
+    ->customFilters([
+        'search' => function (Builder $builder, string $value, string $type): void {
+            $operator  = $type === 'like' ? 'like' : '=';
+            $formatted = $type === 'like' ? '%'.$value.'%' : $value;
+
+            $builder->where(function (Builder $q) use ($operator, $formatted): void {
+                $q->where('users.email', $operator, $formatted)
+                  ->orWhereHas('profile', function (Builder $q) use ($operator, $formatted): void {
+                      $q->whereRaw("CONCAT(firstname, ' ', lastname) $operator ?", [$formatted]);
+                  });
+            });
+        },
+    ])
+    ->prepare()
+    ->fetch();
+```
+
+```
+# Exact match across email and full name
+GET /api/users?where[search]=john
+
+# Partial match across email and full name
+GET /api/users?like[search]=john
+```
+
+#### Notes
+
+- The filter name **must also appear in `allowedFilters()`** to be reachable.
+- Custom filters only apply to the **root model**. They cannot be used inside nested relation paths (e.g. `where[relation.virtual_field]`).
+- Operator parsing (`gt:`, `lte:`, `!`, etc.) is **not applied automatically** — the closure receives the raw value as typed in the request. Handle any parsing you need inside the closure itself.
+- The `$type` parameter reflects which URL key was used: `'where'` for `where[field]=...` and `'like'` for `like[field]=...`.
+
 ## Sorting
 
 The `orderby` parameter allows you to dynamically control the sort order of your API results.
@@ -245,6 +398,48 @@ $results = ApiQueryBuilder::make(User::class, $request)
 ```
 
 This ensures that your API always returns predictable results even when no explicit sorting is requested.
+
+### Custom Sorts
+
+Sometimes a sortable attribute does not map to a real database column — for example, a priority ranking derived from an enum value, a computed score, or any ordering that cannot be expressed as a simple `ORDER BY column`.
+
+The `customSorts()` method lets you register a closure for any such sort key. The closure receives the query builder and the resolved direction (`'asc'` or `'desc'`), giving you full control over how the ordering is applied.
+
+```php
+use Illuminate\Database\Eloquent\Builder;
+use RedskyEnvision\ApiQueryBuilder\Sorts\Sort;
+
+$results = ApiQueryBuilder::make(User::class, $request)
+    ->allowedSorts(['role_priority'])
+    ->customSorts([
+        'role_priority' => function (Builder $builder, string $direction): void {
+            $builder
+                ->orderByRaw(
+                    "CASE role WHEN ? THEN 0 WHEN ? THEN 1 ELSE 2 END ".($direction === 'desc' ? 'DESC' : 'ASC'),
+                    ['admin', 'moderator']
+                )
+                ->orderBy('name', $direction);
+        },
+    ])
+    ->defaultSorts([Sort::make('role_priority')])
+    ->prepare()
+    ->fetch();
+```
+
+```
+# Uses the custom ranking, ascending (admin, then moderator, then everyone else)
+GET /api/users?orderby=role_priority
+
+# Uses the custom ranking, descending
+GET /api/users?orderby=-role_priority
+```
+
+#### Notes
+
+- The sort name **must also appear in `allowedSorts()`** to be reachable.
+- Custom sorts can also be referenced from `defaultSorts()`, applied the same way as an explicit `orderby` request.
+- Direction parsing (the leading `-` for descending) is handled automatically by the query builder before the closure is invoked — the closure only needs to apply `$direction` to its own `orderBy`/`orderByRaw` calls.
+- A custom sort closure can chain multiple `orderBy()`/`orderByRaw()` calls (e.g. a computed ranking followed by a tie-breaker column), since they accumulate rather than overwrite each other.
 
 ## Local Scopes
 
@@ -305,52 +500,6 @@ To allow **all** local scopes to be accessible (not recommended in public APIs):
 ```php
 ->allowedScopes(['*'])
 ```
-
-## Custom Filters
-
-Sometimes a filterable attribute does not map to a real database column — for example, a computed field, a cross-table search, or any condition that cannot be expressed as a simple `where[column]=value`.
-
-The `customFilters()` method lets you register a closure for any such field. The closure receives the query builder, the raw value from the request, and the filter type (`'where'` or `'like'`), giving you full control over how the condition is applied.
-
-A common use case is a **unified search parameter** that matches across multiple columns or related tables in a single filter:
-
-```php
-use Illuminate\Database\Eloquent\Builder;
-
-$results = ApiQueryBuilder::make(User::class, $request)
-    ->allowedRelations(['profile'])
-    ->allowedFilters(['search'])
-    ->customFilters([
-        'search' => function (Builder $builder, string $value, string $type): void {
-            $operator  = $type === 'like' ? 'like' : '=';
-            $formatted = $type === 'like' ? '%'.$value.'%' : $value;
-
-            $builder->where(function (Builder $q) use ($operator, $formatted): void {
-                $q->where('users.email', $operator, $formatted)
-                  ->orWhereHas('profile', function (Builder $q) use ($operator, $formatted): void {
-                      $q->whereRaw("CONCAT(firstname, ' ', lastname) $operator ?", [$formatted]);
-                  });
-            });
-        },
-    ])
-    ->prepare()
-    ->fetch();
-```
-
-```
-# Exact match across email and full name
-GET /api/users?where[search]=john
-
-# Partial match across email and full name
-GET /api/users?like[search]=john
-```
-
-#### Notes
-
-- The filter name **must also appear in `allowedFilters()`** to be reachable.
-- Custom filters only apply to the **root model**. They cannot be used inside nested relation paths (e.g. `where[relation.virtual_field]`).
-- Operator parsing (`gt:`, `lte:`, `!`, etc.) is **not applied automatically** — the closure receives the raw value as typed in the request. Handle any parsing you need inside the closure itself.
-- The `$type` parameter reflects which URL key was used: `'where'` for `where[field]=...` and `'like'` for `like[field]=...`.
 
 ## Resource example
 
