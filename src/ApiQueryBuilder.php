@@ -118,6 +118,12 @@ class ApiQueryBuilder {
 	private array $allowedSorts = ['*'];
 	
 	/**
+	 * @var array<string, Closure> Custom sort handlers keyed by sort name.
+	 * Each closure receives the Builder and the resolved sort direction ('asc' or 'desc').
+	 */
+	private array $customSorts = [];
+	
+	/**
 	 * @var int Default number of results per page
 	 */
 	private int $defaultPerPage = 25;
@@ -246,6 +252,24 @@ class ApiQueryBuilder {
 	 */
 	public function allowedSorts(array $sorts): self {
 		$this->allowedSorts = array_map('strtolower', $sorts);
+		
+		return $this;
+	}
+	
+	/**
+	 * Registers custom sort closures keyed by sort name.
+	 *
+	 * Each closure receives the Builder and the resolved direction ('asc' or 'desc').
+	 * Custom sorts bypass the standard orderBy() call, making them suitable for
+	 * computed orderings (e.g. CASE expressions), joined columns, or virtual attributes.
+	 *
+	 * The sort name must also appear in allowedSorts() to be reachable.
+	 *
+	 * @param array<string, Closure(Builder, string): void> $sorts
+	 * @return $this
+	 */
+	public function customSorts(array $sorts): self {
+		$this->customSorts = $sorts;
 		
 		return $this;
 	}
@@ -1261,7 +1285,11 @@ class ApiQueryBuilder {
 		
 		if (count($sorts) > 0) {
 			foreach ($sorts as $sort) {
-				$this->query->orderBy($sort->column, $sort->direction);
+				if (isset($this->customSorts[$sort->column])) {
+					($this->customSorts[$sort->column])($this->query, $sort->direction);
+				} else {
+					$this->query->orderBy($sort->column, $sort->direction);
+				}
 			}
 		}
 		
