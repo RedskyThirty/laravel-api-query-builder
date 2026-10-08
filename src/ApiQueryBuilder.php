@@ -9,6 +9,7 @@ use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidFilterException;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidRelationException;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidScopeException;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidSortException;
+use RedskyEnvision\ApiQueryBuilder\Registries\FieldDependencyRegistry;
 use RedskyEnvision\ApiQueryBuilder\Sorts\Sort;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -162,6 +163,10 @@ class ApiQueryBuilder {
 		$this->query = $modelClass::query();
 		$this->request = $request;
 		$this->strictMode = $strict;
+		
+		// Register the field dependencies declared by the root model
+		
+		app(FieldDependencyRegistry::class)->registerModel($this->query->getModel());
 	}
 	
 	/**
@@ -188,11 +193,20 @@ class ApiQueryBuilder {
 	}
 	
 	/**
+	 * Sets the allowed relations and registers the field dependencies declared
+	 * by every model reached through them.
+	 *
 	 * @param string[] $relations
 	 * @return $this
 	 */
 	public function allowedRelations(array $relations): self {
 		$this->allowedRelations = $relations;
+		
+		$fieldDependencyRegistry = app(FieldDependencyRegistry::class);
+		
+		foreach ($this->resolveModelsForRootAndAllowedRelations($this->query->getModel()) as $model) {
+			$fieldDependencyRegistry->registerModel($model);
+		}
 		
 		return $this;
 	}
@@ -891,7 +905,22 @@ class ApiQueryBuilder {
 	 * @return string[]
 	 */
 	private function resolveTablesForRootAndAllowedRelations(Model $rootModel): array {
-		$tables = [$rootModel->getTable()];
+		$tables = array_map(
+			fn (Model $model): string => $model->getTable(),
+			$this->resolveModelsForRootAndAllowedRelations($rootModel)
+		);
+		
+		return array_values(array_unique($tables));
+	}
+	
+	/**
+	 * Resolves the root model and every model reached through the allowed relations (including nested).
+	 *
+	 * @param Model $rootModel
+	 * @return Model[]
+	 */
+	private function resolveModelsForRootAndAllowedRelations(Model $rootModel): array {
+		$models = [$rootModel];
 		
 		foreach ($this->allowedRelations as $relationPath) {
 			$segments = explode('.', $relationPath);
@@ -909,11 +938,11 @@ class ApiQueryBuilder {
 				}
 				
 				$currentModel = $relationInstance->getRelated();
-				$tables[] = $currentModel->getTable();
+				$models[] = $currentModel;
 			}
 		}
 		
-		return array_values(array_unique($tables));
+		return $models;
 	}
 	
 	/**
