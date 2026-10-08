@@ -5,6 +5,7 @@ namespace RedskyEnvision\ApiQueryBuilder\Concerns;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidFieldException;
 use RedskyEnvision\ApiQueryBuilder\Registries\FieldDependencyRegistry;
 use RedskyEnvision\ApiQueryBuilder\Registries\FieldRegistry;
+use RedskyEnvision\ApiQueryBuilder\Support\FieldRequirement;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 
@@ -32,9 +33,14 @@ trait ResolvesFields {
 	private array $allowedFields = ['*'];
 	
 	/**
-	 * @var array<string, string[]> List of fields that must always be selected, keyed by table name
+	 * @var array<string, string[]> List of fields that must always be selected (never exposed), keyed by table name
 	 */
 	private array $alwaysFields = [];
+	
+	/**
+	 * @var array<string, FieldRequirement[]> Context-specific field requirements, keyed by table name
+	 */
+	private array $fieldRequirements = [];
 	
 	/**
 	 * @var bool Whether to throw exceptions when something invalid is provided
@@ -54,13 +60,33 @@ trait ResolvesFields {
 	}
 	
 	/**
-	 * Sets always-included fields per table.
+	 * Sets the fields that must always be selected per table, so that the requested fields,
+	 * the relations and the policies always find the values they rely on.
+	 *
+	 * These fields are only selected: they are exposed only if they are also requested and allowed.
 	 *
 	 * @param array<string, string[]> $fields Value must be ['table' => ['field1', 'field2']]
 	 * @return $this
 	 */
 	public function alwaysFields(array $fields): self {
 		$this->alwaysFields = $fields;
+		
+		return $this;
+	}
+	
+	/**
+	 * Declares the fields a table must select, optionally only when other fields are requested
+	 * (possibly on other tables). Calling it several times for the same table accumulates the requirements.
+	 *
+	 * Like "alwaysFields", the required fields are only selected, never exposed, and they are ignored
+	 * when the table selects all of its fields.
+	 *
+	 * @param string $tableName
+	 * @param FieldRequirement ...$requirements
+	 * @return $this
+	 */
+	public function requireFieldsFor(string $tableName, FieldRequirement ...$requirements): self {
+		$this->fieldRequirements[$tableName] = array_merge($this->fieldRequirements[$tableName] ?? [], $requirements);
 		
 		return $this;
 	}
@@ -101,8 +127,10 @@ trait ResolvesFields {
 	
 	/**
 	 * Parses fields from the request for a given table, filters them against allowedFields,
-	 * adds the fields required by the requested ones (see FieldDependencyRegistry), merges alwaysFields,
 	 * and registers the result in FieldRegistry.
+	 *
+	 * The returned fields are the exposed ones (requested and allowed). The fields to select
+	 * from the database are resolved separately by "resolveSelectedFields()".
 	 *
 	 * @param Request $request
 	 * @param string $tableName
@@ -120,29 +148,79 @@ trait ResolvesFields {
 			$fields = ['*'];
 		}
 		
-		$fieldRegistry = app(FieldRegistry::class);
-		
-		// Add the fields required by the requested ones (resolved by "FieldDependencyRegistry")
-		
-		if ($fields !== ['*']) {
-			$fields = array_merge($fields, app(FieldDependencyRegistry::class)->resolve($tableName, $fields));
-		}
-		
-		// Merge "alwaysFields" when a specific field selection is active
-		
-		if ($fields !== ['*'] && array_key_exists($tableName, $this->alwaysFields)) {
-			$fields = array_unique(array_merge($fields, $this->alwaysFields[$tableName]));
-			
-			// Store the fields in FieldRegistry
-			
-			$fieldRegistry->setAlwaysFieldsFor($tableName, $this->alwaysFields[$tableName]);
-		}
-		
 		// Store the result in FieldRegistry for use in resources (e.g., ApiResource)
 		
-		$fieldRegistry->setFieldsFor($tableName, $fields);
+		app(FieldRegistry::class)->setFieldsFor($tableName, $fields);
 		
 		return $fields;
+	}
+	
+	/**
+	 * Returns the fields to select from the database for a table: the exposed fields plus
+	 * everything the library needs to compute them correctly. These additional fields are never exposed.
+	 *
+	 * - the fields required through "requireFieldsFor()"
+	 * - the "alwaysFields"
+	 * - the dependencies of all of the above (see FieldDependencyRegistry), resolved transitively
+	 *
+	 * A wildcard selection is returned as is.
+	 *
+	 * @param string $tableName
+	 * @param string[] $exposedFields Result of "parseFields()"
+	 * @return string[]
+	 */
+	private function resolveSelectedFields(string $tableName, array $exposedFields): array {
+		if ($exposedFields === ['*']) {
+			return $exposedFields;
+		}
+		
+		$fields = array_values(array_unique(array_merge(
+			$exposedFields,
+			$this->resolveRequiredFields($tableName),
+			$this->alwaysFields[$tableName] ?? []
+		)));
+		
+		return array_merge($fields, app(FieldDependencyRegistry::class)->resolve($tableName, $fields));
+	}
+	
+	/**
+	 * Returns the fields required for a table by the active "requireFieldsFor()" requirements.
+	 *
+	 * @param string $tableName
+	 * @return string[]
+	 */
+	private function resolveRequiredFields(string $tableName): array {
+		$required = [];
+		
+		foreach ($this->fieldRequirements[$tableName] ?? [] as $requirement) {
+			if ($this->isRequirementActive($requirement)) {
+				array_push($required, ...$requirement->fields);
+			}
+		}
+		
+		return array_values(array_unique($required));
+	}
+	
+	/**
+	 * A requirement without condition is always active. Otherwise it is active as soon as one of the
+	 * listed fields is explicitly requested on its table: a table selecting all of its fields
+	 * (no "fields" parameter) does not trigger it.
+	 *
+	 * @param FieldRequirement $requirement
+	 * @return bool
+	 */
+	private function isRequirementActive(FieldRequirement $requirement): bool {
+		if ($requirement->whenRequested === []) {
+			return true;
+		}
+		
+		foreach ($requirement->whenRequested as $sourceTable => $sourceFields) {
+			if (array_intersect($sourceFields, $this->explodeRequestedFieldsForTable($sourceTable)) !== []) {
+				return true;
+			}
+		}
+		
+		return false;
 	}
 	
 	/**
