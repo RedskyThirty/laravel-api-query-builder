@@ -3,8 +3,8 @@
 A lightweight and composable query builder for Laravel APIs, inspired by GraphQL flexibility.  
 Select only the fields and relations you want. Filter, sort, paginate — cleanly.
 
-**Current version:** 1.5.0<br>
-**Last update:** July 31, 2026
+**Current version:** 1.6.0<br>
+**Last update:** October 8, 2026
 
 ---
 
@@ -16,8 +16,13 @@ Select only the fields and relations you want. Filter, sort, paginate — cleanl
     - [Collection Mode](#collection-mode)
     - [Single Resource Mode](#single-resource-mode)
     - [Usage Without Executing a Query](#usage-without-executing-a-query)
-- [Always Fields](#always-fields)
-    - [Priority Rules](#-priority-rules)
+- [Field Selection](#field-selection)
+    - [Exposed vs Selected Fields](#exposed-vs-selected-fields)
+    - [Automatic Keys](#automatic-keys)
+    - [Always Fields](#always-fields)
+    - [Conditional Requirements](#conditional-requirements)
+    - [Field Dependencies](#field-dependencies)
+    - [Choosing the Right Mechanism](#choosing-the-right-mechanism)
 - [Filtering](#filtering)
     - [Basic Usage](#basic-usage)
     - [Defining Allowed Filters](#defining-allowed-filters)
@@ -43,7 +48,7 @@ Select only the fields and relations you want. Filter, sort, paginate — cleanl
     - [Accessing the DTO in data()](#accessing-the-dto-in-data)
 - [Field Resolution Without a Query (ApiFieldResolver)](#field-resolution-without-a-query-apifieldresolver)
     - [Basic Usage](#basic-usage-3)
-    - [alwaysFields Support](#alwaysfields-support)
+    - [Limitations](#limitations)
     - [Strict Mode](#strict-mode)
     - [Inspecting Resolved Fields](#inspecting-resolved-fields)
 - [Nested Relation Helpers](#nested-relation-helpers)
@@ -68,6 +73,8 @@ Select only the fields and relations you want. Filter, sort, paginate — cleanl
 - ✅ Logical AND / OR filtering (`where[name]=john|doe`)
 - ✅ Sorting (`orderby=-created_at`)
 - ✅ Custom sorts for computed or virtual orderings (`customSorts()`)
+- ✅ Automatic selection of the keys relations need (foreign keys, morph types)
+- ✅ Conditional field requirements (`requireFieldsFor()`) and model-declared field dependencies (`DeclaresFieldDependencies`)
 - ✅ Strict mode for validation
 
 ## Installation
@@ -185,24 +192,129 @@ ApiQueryBuilder::make(User::class, $request)
 return UserResource::make($user);
 ```
 
-## Always Fields
+## Field Selection
 
-Sometimes, certain fields are **required internally** even if the client hasn't explicitly requested them. For example, foreign keys used to link relationships.
+### Exposed vs Selected Fields
 
-To support this, the `alwaysFields()` method allows you to define fields that should **always be included in the response**, even if they are not present in the `fields[...]` parameters or in the `defaultFields()` fallback.
+Every table involved in a request has two distinct lists of fields:
+
+- **Exposed fields**: what the client asked for (`fields[table]=...`), filtered by `allowedFields()`. Only these appear in the response, and `allowedFields()` always has the last word on what is exposed.
+- **Selected fields**: what is actually read from the database. It is the exposed fields plus everything the library needs to compute them correctly. These additional fields are **never exposed**, unless they are also requested and allowed.
+
+```
+selected = exposed
+         + automatic keys        (id, foreign keys, morph types)
+         + required fields       (requireFieldsFor)
+         + always fields         (alwaysFields)
+         + field dependencies    (DeclaresFieldDependencies, resolvers)
+```
+
+When a table selects all of its fields (no `fields[table]` parameter, or `['*']`), the whole row is read and nothing is added: always fields, requirements and dependencies are ignored.
+
+`getRequestedFields()`, `getRequestedFieldsFor()` and `hasRequestedField()` return the exposed fields only.
+
+### Automatic Keys
+
+The library adds by itself the columns that Eloquent needs to hydrate and match relations, so you never have to declare them. Nothing is added when a table selects all of its fields.
+
+- **Root model**: `id`, and the foreign key of every `BelongsTo` / `MorphTo` relation listed in `allowedRelations()` (plus the morph type column for a `MorphTo`).
+- **Eager-loaded relations**: `id`; for `HasOne` / `HasMany` (and their morph variants), the foreign key linking the child to its parent (plus the morph type); and, for a nested path such as `post.author`, the foreign key of the next `BelongsTo` / `MorphTo` of the requested path.
+- **`MorphTo` relations**: the related table is only known at runtime, so no field selection is applied and every column is read.
+
+Other relation types (e.g. `BelongsToMany`, `HasManyThrough`) only get `id`.
+
+### Always Fields
+
+Some fields are needed whatever the client requested, for instance by a policy check or by the code running after the query.
+
+`alwaysFields()` selects them unconditionally:
 
 ```php
 ->alwaysFields([
-    'posts' => ['author_id']
+    'posts' => ['author_id'] // Required for the policy check
 ])
 ```
 
-These fields will be automatically merged into the requested or default field set before the resource is rendered.
+They are **selected only**: they are not filtered by `allowedFields()` and they are exposed only if they are also requested and allowed.
 
-### ⚠️ Priority Rules
-- `alwaysFields` are **not filtered** by `allowedFields`
-- They are **injected unconditionally**
-- Useful for internal fields like foreign keys or polymorphic links
+> Do not use `alwaysFields()` for keys that relations need (see [Automatic Keys](#automatic-keys)), nor for columns that are needed only when a given field is requested (see below).
+
+### Conditional Requirements
+
+`requireFieldsFor()` declares fields a table must select **only when other fields are requested**, possibly on another table.
+
+A typical case is a field computed from a column of a parent record: the parent column is needed only when the computed field is requested.
+
+```php
+use RedskyEnvision\ApiQueryBuilder\Support\FieldRequirement;
+
+->requireFieldsFor(
+    'posts',
+    // The comments format their dates with the locale of their post
+    FieldRequirement::make(
+        fields: ['locale'],
+        whenRequested: ['comments' => ['formatted_created_at']]
+    )
+)
+```
+
+- The first argument is the table that receives the required fields.
+- `whenRequested` maps a source table to the fields that trigger the requirement. It is active as soon as at least one of them is **explicitly** requested on its source table. A table selecting all of its fields (no `fields[table]` parameter) does not trigger it.
+- An empty `whenRequested` makes the requirement unconditional. Prefer `alwaysFields()` in that case.
+- Several calls for the same table accumulate.
+- Like always fields, required fields are selected only, never exposed.
+
+### Field Dependencies
+
+Some fields do not exist as columns: they are accessors reading other attributes. `FieldDependencyRegistry` knows which columns to select when such a field is requested.
+
+Dependencies are indexed by table name and resolved transitively: if `a` requires `b` and `b` requires `c`, requesting `a` selects `b` and `c`.
+
+#### Declared by the model
+
+Implement `DeclaresFieldDependencies` on the model and return a map `requested field => fields it requires`:
+
+```php
+use Illuminate\Database\Eloquent\Model;
+use RedskyEnvision\ApiQueryBuilder\Contracts\DeclaresFieldDependencies;
+
+class User extends Model implements DeclaresFieldDependencies {
+    public static function fieldDependencies(): array {
+        return [
+            'full_name' => ['first_name', 'last_name'],
+            'is_verified' => ['email_verified_at']
+        ];
+    }
+}
+```
+
+The dependencies of the root model and of every model reached through `allowedRelations()` are registered automatically.
+
+#### Declared by a convention
+
+A resolver is called for each requested field and each table, and returns the fields it depends on (an empty array when none). Register it once, for instance in a service provider:
+
+```php
+use RedskyEnvision\ApiQueryBuilder\Registries\FieldDependencyRegistry;
+
+// A requested "xxx_formatted" field requires its base "xxx" field
+app(FieldDependencyRegistry::class)->addResolver(
+    fn (string $field, string $tableName): array => str_ends_with($field, '_formatted') ? [substr($field, 0, -10)] : []
+);
+```
+
+The registry knows no field name by itself: all the rules come from your application.
+
+### Choosing the Right Mechanism
+
+| Need | Use |
+|------|-----|
+| A computed field always reads the same columns of its own table | `fieldDependencies()` on the model |
+| The same naming rule applies to many fields or models (e.g. `_formatted`) | A resolver on `FieldDependencyRegistry` |
+| A column is needed whatever the request (policy check, code after the query) | `alwaysFields()` |
+| A column is needed only for this query, when some field is requested, typically from another table | `requireFieldsFor()` |
+
+As a rule of thumb, a dependency that is a property of the attribute itself belongs to the model, while a dependency that depends on the context of the query belongs to the query builder.
 
 ## Filtering
 
@@ -480,7 +592,7 @@ $results = ApiQueryBuilder::make(User::class, $request)
 
 If a request includes a scope that is not allowed, it will either:
 - be ignored (in **non-strict mode**), or
-- throw an `InvalidArgumentException` (in **strict mode**, enabled by default).
+- throw an `InvalidScopeException` (in **strict mode**, enabled by default).
 
 ### Syntax Variants
 
@@ -733,21 +845,6 @@ class UserController extends Controller
 With `?fields[users]=id,email`, the response will only contain `id` and `email`.  
 Without any `fields` parameter, the resource falls back to its `defaultFields()`.
 
-### alwaysFields Support
-
-`ApiFieldResolver` supports `alwaysFields()` with the same semantics as `ApiQueryBuilder`: the specified fields are injected unconditionally into any non-wildcard selection.
-
-```php
-ApiFieldResolver::make($request)
-    ->allowedFields([
-        'users' => ['id', 'email', 'name', 'created_at']
-    ])
-    ->alwaysFields([
-        'users' => ['id']
-    ])
-    ->prepare('users');
-```
-
 ### Strict Mode
 
 By default, strict mode is enabled: requesting a field not listed in `allowedFields` throws an `InvalidFieldException`. Pass `false` as the second argument to `make()` to silently drop disallowed fields instead.
@@ -775,6 +872,10 @@ $fields = $resolver->getRequestedFieldsFor('users');
 // Returns true if 'email' is in the resolved list (or if wildcard is active)
 $hasEmail = $resolver->hasRequestedField('users', 'email');
 ```
+
+### Limitations
+
+`ApiFieldResolver` only resolves the **exposed** fields. Everything that concerns the database selection (`alwaysFields()`, `requireFieldsFor()`, field dependencies, automatic keys) does not apply, since no query is executed.
 
 ## Nested Relation Helpers
 
