@@ -3,6 +3,7 @@
 namespace RedskyEnvision\ApiQueryBuilder\Concerns;
 
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidFieldException;
+use RedskyEnvision\ApiQueryBuilder\Registries\FieldDependencyRegistry;
 use RedskyEnvision\ApiQueryBuilder\Registries\FieldRegistry;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -100,7 +101,8 @@ trait ResolvesFields {
 	
 	/**
 	 * Parses fields from the request for a given table, filters them against allowedFields,
-	 * merges alwaysFields, and registers the result in FieldRegistry.
+	 * adds the fields required by the requested ones (see FieldDependencyRegistry), merges alwaysFields,
+	 * and registers the result in FieldRegistry.
 	 *
 	 * @param Request $request
 	 * @param string $tableName
@@ -119,6 +121,12 @@ trait ResolvesFields {
 		}
 		
 		$fieldRegistry = app(FieldRegistry::class);
+		
+		// Add the fields required by the requested ones (resolved by "FieldDependencyRegistry")
+		
+		if ($fields !== ['*']) {
+			$fields = array_merge($fields, app(FieldDependencyRegistry::class)->resolve($tableName, $fields));
+		}
 		
 		// Merge "alwaysFields" when a specific field selection is active
 		
