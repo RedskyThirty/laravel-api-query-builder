@@ -12,6 +12,9 @@ use Illuminate\Http\Request;
  * Handles field resolution and FieldRegistry registration without requiring
  * an Eloquent model or executing any database queries.
  *
+ * Only the exposed fields are resolved: "alwaysFields()" and "requireFieldsFor()" concern
+ * the database selection and are therefore not available here.
+ *
  * Typical usage:
  *   ApiFieldResolver::make($request)
  *       ->allowedFields(['users' => ['id', 'email', 'name']])
@@ -20,7 +23,10 @@ use Illuminate\Http\Request;
  * @package RedskyEnvision\ApiQueryBuilder
  */
 class ApiFieldResolver {
-	use ResolvesFields;
+	use ResolvesFields {
+		alwaysFields as private;
+		requireFieldsFor as private;
+	}
 	
 	/**
 	 * @param Request $request

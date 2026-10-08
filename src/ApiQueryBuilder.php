@@ -9,6 +9,7 @@ use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidFilterException;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidRelationException;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidScopeException;
 use RedskyEnvision\ApiQueryBuilder\Exceptions\InvalidSortException;
+use RedskyEnvision\ApiQueryBuilder\Registries\FieldDependencyRegistry;
 use RedskyEnvision\ApiQueryBuilder\Sorts\Sort;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -162,6 +163,10 @@ class ApiQueryBuilder {
 		$this->query = $modelClass::query();
 		$this->request = $request;
 		$this->strictMode = $strict;
+		
+		// Register the field dependencies declared by the root model
+		
+		app(FieldDependencyRegistry::class)->registerModel($this->query->getModel());
 	}
 	
 	/**
@@ -188,11 +193,20 @@ class ApiQueryBuilder {
 	}
 	
 	/**
+	 * Sets the allowed relations and registers the field dependencies declared
+	 * by every model reached through them.
+	 *
 	 * @param string[] $relations
 	 * @return $this
 	 */
 	public function allowedRelations(array $relations): self {
 		$this->allowedRelations = $relations;
+		
+		$fieldDependencyRegistry = app(FieldDependencyRegistry::class);
+		
+		foreach ($this->resolveModelsForRootAndAllowedRelations($this->query->getModel()) as $model) {
+			$fieldDependencyRegistry->registerModel($model);
+		}
 		
 		return $this;
 	}
@@ -349,8 +363,10 @@ class ApiQueryBuilder {
 	/**
 	 * Returns the requested fields for a single table, using the same logic as prepare():
 	 * - supports allowedFields() + strictMode via filterFields()
-	 * - appends alwaysFields[table] when selection is not wildcard
 	 * - registers the result in FieldRegistry (through parseFields)
+	 *
+	 * Only the exposed fields (requested and allowed) are returned: the fields the library
+	 * selects on its own (alwaysFields, requirements, dependencies) are not part of them.
 	 *
 	 * If no fields are specified for the table, returns ['*'].
 	 *
@@ -397,7 +413,7 @@ class ApiQueryBuilder {
 		
 		// Extract the requested fields for the root model from fields[model]
 		
-		$fields = $this->parseFields($this->request, $modelTable);
+		$fields = $this->resolveSelectedFields($modelTable, $this->parseFields($this->request, $modelTable));
 		
 		if (!$this->isSelectingAll($fields)) {
 			// Always include 'id' to ensure entity identification
@@ -514,7 +530,7 @@ class ApiQueryBuilder {
 			$this->query->with([$root => function ($q) use ($root, $nested, $rootRelation, $relatedModel, $relatedTable) {
 				// Always parse and apply field selection on the root relation itself
 				
-				$fields = $this->parseFields($this->request, $relatedTable);
+				$fields = $this->resolveSelectedFields($relatedTable, $this->parseFields($this->request, $relatedTable));
 				
 				/*
 				 * MorphTo relations resolve their actual table at runtime (one query per morph type).
@@ -523,6 +539,14 @@ class ApiQueryBuilder {
 				 */
 				
 				if (!$this->isSelectingAll($fields) && !($rootRelation instanceof MorphTo)) {
+					// The nested BelongsTo / MorphTo relations to load need their foreign key on this model
+					
+					$this->addNestedRelationForeignKeys(
+						$relatedModel,
+						array_map(fn (string $sub): string => explode('.', $sub)[0], $nested),
+						$fields
+					);
+					
 					$this->prepareRelationSelect($q, $rootRelation, $relatedTable, $fields);
 				}
 				
@@ -666,6 +690,32 @@ class ApiQueryBuilder {
 	}
 	
 	/**
+	 * Adds to the selected fields of a model the foreign keys of the BelongsTo / MorphTo relations
+	 * that continue a requested relation path: without them, the eager loading of those relations
+	 * cannot match the related models.
+	 *
+	 * Only the relations of the requested path are considered, so nothing is selected for relations that are not loaded.
+	 *
+	 * @param Model $model The model whose fields are being selected
+	 * @param string[] $nextRelationNames Names of the relations following $model in the requested paths
+	 * @param string[] $fields The reference to the list of fields to be updated
+	 * @return void
+	 */
+	private function addNestedRelationForeignKeys(Model $model, array $nextRelationNames, array &$fields): void {
+		foreach ($nextRelationNames as $relationName) {
+			if (!method_exists($model, $relationName)) {
+				continue;
+			}
+			
+			$relationInstance = $model->$relationName();
+			
+			if ($relationInstance instanceof BelongsTo) {
+				$this->addRelationForeignKeys($relationInstance, $fields);
+			}
+		}
+	}
+	
+	/**
 	 * Applies nested `with()` eager loading and selects fields for each related model.
 	 *
 	 *  This method recursively traverses the relation chain and ensures:
@@ -718,11 +768,15 @@ class ApiQueryBuilder {
 		// Apply eager loading with a closure to constrain fields and nested relations
 		
 		$builder->with([$relationName => function ($q) use ($relationSegments, $fullRelationKey, $relatedModel, $relationInstance, $relatedTable) {
-			$fields = $this->parseFields($this->request, $relatedTable);
+			$fields = $this->resolveSelectedFields($relatedTable, $this->parseFields($this->request, $relatedTable));
 			
 			// Same guard as in "prepare()": "MorphTo" relations must not receive a static field selection.
 			
 			if (!$this->isSelectingAll($fields) && !($relationInstance instanceof MorphTo)) {
+				// The next BelongsTo / MorphTo relation of the path needs its foreign key on this model
+				
+				$this->addNestedRelationForeignKeys($relatedModel, array_slice($relationSegments, 0, 1), $fields);
+				
 				$this->prepareRelationSelect($q, $relationInstance, $relatedTable, $fields);
 			}
 			
@@ -891,7 +945,22 @@ class ApiQueryBuilder {
 	 * @return string[]
 	 */
 	private function resolveTablesForRootAndAllowedRelations(Model $rootModel): array {
-		$tables = [$rootModel->getTable()];
+		$tables = array_map(
+			fn (Model $model): string => $model->getTable(),
+			$this->resolveModelsForRootAndAllowedRelations($rootModel)
+		);
+		
+		return array_values(array_unique($tables));
+	}
+	
+	/**
+	 * Resolves the root model and every model reached through the allowed relations (including nested).
+	 *
+	 * @param Model $rootModel
+	 * @return Model[]
+	 */
+	private function resolveModelsForRootAndAllowedRelations(Model $rootModel): array {
+		$models = [$rootModel];
 		
 		foreach ($this->allowedRelations as $relationPath) {
 			$segments = explode('.', $relationPath);
@@ -909,11 +978,11 @@ class ApiQueryBuilder {
 				}
 				
 				$currentModel = $relationInstance->getRelated();
-				$tables[] = $currentModel->getTable();
+				$models[] = $currentModel;
 			}
 		}
 		
-		return array_values(array_unique($tables));
+		return $models;
 	}
 	
 	/**

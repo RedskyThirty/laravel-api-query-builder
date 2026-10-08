@@ -2,6 +2,7 @@
 
 namespace RedskyEnvision\ApiQueryBuilder;
 
+use RedskyEnvision\ApiQueryBuilder\Registries\FieldDependencyRegistry;
 use RedskyEnvision\ApiQueryBuilder\Registries\FieldRegistry;
 use Illuminate\Support\ServiceProvider;
 
@@ -16,5 +17,6 @@ class ApiQueryBuilderServiceProvider extends ServiceProvider {
 	 */
 	public function register(): void {
 		$this->app->singleton(FieldRegistry::class, fn () => new FieldRegistry());
+		$this->app->singleton(FieldDependencyRegistry::class, fn () => new FieldDependencyRegistry());
 	}
 }
