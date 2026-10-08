@@ -81,14 +81,6 @@ abstract class ApiResource extends JsonResource {
 			if (!empty($allowedFields) && !FieldRegistry::isSelectingAll($allowedFields)) {
 				$requestedFields = array_values(array_intersect($requestedFields, $allowedFields));
 			}
-			
-			// Inject "alwaysFields" if defined
-			
-			$alwaysFields = $fieldRegistry->getAlwaysFieldsFor($resourceTable);
-			
-			if (!empty($alwaysFields)) {
-				$requestedFields = array_values(array_unique(array_merge($requestedFields, $alwaysFields)));
-			}
 		}
 		
 		$resourceAttributes = $this->resolveAttributes(); // Raw resource attributes
